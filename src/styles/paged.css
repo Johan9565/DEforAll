@@ -1,0 +1,90 @@
+/* Paged.js print preview container */
+.cde-print-preview {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.cde-pages {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 0.5rem;
+  box-sizing: border-box;
+}
+
+.cde-pages.is-paginating {
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.cde-pages-label {
+  width: 100%;
+  max-width: 8.5in;
+  margin: 0.5rem auto 0;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.cde-workspace[data-page-size='a4'] .cde-pages-label {
+  max-width: 210mm;
+}
+
+.cde-pages .pagedjs_pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  width: 100%;
+}
+
+.cde-pages .pagedjs_page {
+  background: #ffffff;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  margin: 0 !important;
+}
+
+.cde-pages .pagedjs_sheet {
+  background: #ffffff;
+}
+
+.cde-pages .pagedjs_pagebox,
+.cde-pages .pagedjs_area,
+.cde-pages .pagedjs_page_content {
+  box-sizing: border-box;
+}
+
+@media print {
+  .cde-pages-label {
+    display: none !important;
+  }
+
+  .cde-workspace[data-view='edit'] .cde-print-preview {
+    display: none !important;
+  }
+
+  .cde-pages {
+    margin: 0;
+    gap: 0;
+  }
+
+  .cde-pages .pagedjs_pages {
+    gap: 0;
+  }
+
+  .cde-pages .pagedjs_page {
+    box-shadow: none;
+    break-after: page;
+  }
+}

@@ -1,0 +1,437 @@
+/* Workspace */
+.cde-workspace {
+  background-color: #e5e7eb;
+  padding: 1rem 1rem 2rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* Hidden metric probes */
+.cde-measure {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.cde-measure__page {
+  box-sizing: border-box;
+}
+
+.cde-measure--letter .cde-measure__page {
+  width: 8.5in;
+  height: 11in;
+}
+
+.cde-measure--a4 .cde-measure__page {
+  width: 210mm;
+  height: 297mm;
+}
+
+.cde-measure--letter .cde-measure__margin {
+  height: 1in;
+}
+
+.cde-measure--a4 .cde-measure__margin {
+  height: 2.54cm;
+}
+
+/* Stack of independent physical pages */
+.cde-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  /* Allow native highlight across static + TipTap sheets */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.cde-pages.is-native-selecting {
+  cursor: text;
+}
+
+.cde-pages.is-native-selecting .cde-page-sheet {
+  /* TipTap is frozen — every sheet is selectable HTML */
+  cursor: text;
+}
+
+.cde-pages.has-cross-selection .cde-page-sheet__static::selection,
+.cde-pages.has-cross-selection .cde-page-content::selection {
+  background: rgba(59, 130, 246, 0.35);
+}
+
+/* ─── Page sheet (shared shell for static + TipTap) ─── */
+.cde-page-sheet {
+  position: relative;
+  flex: 0 0 auto;
+  background: #ffffff;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.cde-page-sheet--letter {
+  width: 8.5in;
+  height: 11in;
+  padding: 1in;
+}
+
+.cde-page-sheet--a4 {
+  width: 210mm;
+  height: 297mm;
+  padding: 2.54cm;
+}
+
+.cde-page-sheet.is-active {
+  outline: 2px solid #93c5fd;
+  outline-offset: 0;
+}
+
+.cde-page-sheet.is-static {
+  cursor: text;
+}
+
+.cde-page-sheet__body {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.cde-page-sheet__editor-mount {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.cde-page-sheet__num {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.45rem;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * Zero layout shift: identical typography for static HTML and TipTap .ProseMirror.
+ * Body area = page height − 2× margin (letter: 11in − 2in, a4: 297mm − 5.08cm).
+ */
+.cde-page-content,
+.cde-page-sheet .ProseMirror,
+.cde-page-sheet__static {
+  outline: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  color: #111827;
+  font-family: 'Times New Roman', Times, Georgia, serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  background: transparent;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.cde-page-sheet--letter .cde-page-content,
+.cde-page-sheet--letter .ProseMirror,
+.cde-page-sheet--letter .cde-page-sheet__static {
+  min-height: calc(11in - 2in);
+}
+
+.cde-page-sheet--a4 .cde-page-content,
+.cde-page-sheet--a4 .ProseMirror,
+.cde-page-sheet--a4 .cde-page-sheet__static {
+  min-height: calc(297mm - 5.08cm);
+}
+
+/* TipTap injects .ProseMirror — neutralize default chrome inside the sheet */
+.cde-page-sheet .ProseMirror {
+  white-space: pre-wrap;
+}
+
+.cde-page-sheet .ProseMirror-focused {
+  outline: none;
+}
+
+/* Content typography (static + editor) */
+.cde-page-content p,
+.cde-page-sheet__static p,
+.cde-page-sheet .ProseMirror p {
+  margin: 0 0 0.75em;
+}
+
+.cde-page-content h1,
+.cde-page-content h2,
+.cde-page-content h3,
+.cde-page-sheet__static h1,
+.cde-page-sheet__static h2,
+.cde-page-sheet__static h3,
+.cde-page-sheet .ProseMirror h1,
+.cde-page-sheet .ProseMirror h2,
+.cde-page-sheet .ProseMirror h3 {
+  margin: 1em 0 0.5em;
+  line-height: 1.25;
+}
+
+.cde-page-content ul,
+.cde-page-content ol,
+.cde-page-sheet__static ul,
+.cde-page-sheet__static ol,
+.cde-page-sheet .ProseMirror ul,
+.cde-page-sheet .ProseMirror ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+}
+
+.cde-page-content table,
+.cde-page-sheet__static table,
+.cde-page-sheet .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 1em;
+  table-layout: fixed;
+  overflow: hidden;
+}
+
+.cde-page-content td,
+.cde-page-content th,
+.cde-page-sheet__static td,
+.cde-page-sheet__static th,
+.cde-page-sheet .ProseMirror td,
+.cde-page-sheet .ProseMirror th {
+  border: 1px solid #d1d5db;
+  padding: 0.35em 0.5em;
+  vertical-align: top;
+  position: relative;
+}
+
+.cde-page-content th,
+.cde-page-sheet__static th,
+.cde-page-sheet .ProseMirror th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.cde-page-sheet .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.12);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cde-page-sheet .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #3b82f6;
+  pointer-events: none;
+}
+
+.cde-page-sheet .resize-cursor {
+  cursor: col-resize;
+}
+
+.cde-page-sheet .is-editor-empty:first-child::before,
+.cde-page-sheet p.is-empty::before {
+  color: #9ca3af;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.cde-page-content a.cde-link,
+.cde-page-sheet__static a.cde-link,
+.cde-page-sheet .ProseMirror a.cde-link {
+  color: #1d4ed8;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.cde-page-content img.cde-image,
+.cde-page-sheet__static img.cde-image,
+.cde-page-sheet .ProseMirror img.cde-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.75em 0;
+}
+
+.cde-page-content blockquote,
+.cde-page-sheet__static blockquote,
+.cde-page-sheet .ProseMirror blockquote {
+  margin: 0 0 0.75em;
+  padding-left: 1em;
+  border-left: 3px solid #d1d5db;
+  color: #374151;
+}
+
+.cde-page-content code,
+.cde-page-sheet__static code,
+.cde-page-sheet .ProseMirror code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.92em;
+  background: #f3f4f6;
+  padding: 0.1em 0.3em;
+  border-radius: 0.2em;
+}
+
+.cde-page-content pre,
+.cde-page-sheet__static pre,
+.cde-page-sheet .ProseMirror pre {
+  background: #111827;
+  color: #f9fafb;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+  padding: 0.75em 1em;
+  border-radius: 0.35rem;
+  overflow-x: auto;
+  margin: 0 0 0.75em;
+}
+
+.cde-page-content pre code,
+.cde-page-sheet__static pre code,
+.cde-page-sheet .ProseMirror pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+.cde-page-content hr,
+.cde-page-sheet__static hr,
+.cde-page-sheet .ProseMirror hr {
+  border: none;
+  border-top: 1px solid #d1d5db;
+  margin: 1.25em 0;
+}
+
+.cde-page-content mark,
+.cde-page-sheet__static mark,
+.cde-page-sheet .ProseMirror mark {
+  border-radius: 0.15em;
+  padding: 0.05em 0.15em;
+}
+
+.cde-page-content ul[data-type='taskList'],
+.cde-page-sheet__static ul[data-type='taskList'],
+.cde-page-sheet .ProseMirror ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.25em;
+}
+
+.cde-page-content ul[data-type='taskList'] li,
+.cde-page-sheet__static ul[data-type='taskList'] li,
+.cde-page-sheet .ProseMirror ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+
+.cde-page-content ul[data-type='taskList'] li > label,
+.cde-page-sheet__static ul[data-type='taskList'] li > label,
+.cde-page-sheet .ProseMirror ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.2em;
+}
+
+.cde-page-content ul[data-type='taskList'] li > div,
+.cde-page-sheet__static ul[data-type='taskList'] li > div,
+.cde-page-sheet .ProseMirror ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+}
+
+/* Legacy single-sheet (pagination=false still uses page-sheet stack of 1) */
+.cde-page {
+  background: #ffffff;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+  outline: none;
+  color: #111827;
+  font-family: 'Times New Roman', Times, Georgia, serif;
+  font-size: 12pt;
+  line-height: 1.5;
+}
+
+.cde-page--letter {
+  width: 8.5in;
+  min-height: 11in;
+  padding: 1in;
+}
+
+.cde-page--a4 {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 2.54cm;
+}
+
+@media print {
+  body {
+    background: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .cde-workspace {
+    padding: 0;
+    background: none;
+    min-height: auto;
+    display: block;
+  }
+
+  .cde-toolbar {
+    display: none !important;
+  }
+
+  .cde-page-sheet {
+    box-shadow: none;
+    outline: none !important;
+    break-after: page;
+    margin: 0 !important;
+  }
+
+  .cde-page-sheet__num {
+    display: none;
+  }
+
+  .cde-page-sheet.is-active {
+    outline: none;
+  }
+}
+
+@page {
+  size: letter;
+  margin: 1in;
+}
+
+@page cde-a4 {
+  size: A4;
+  margin: 2.54cm;
+}
+
+@media print {
+  .cde-page-sheet--a4 {
+    page: cde-a4;
+  }
+}
