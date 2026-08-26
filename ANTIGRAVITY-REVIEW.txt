@@ -1,0 +1,27 @@
+Overflow / cursor — review notes (Antigravity)
+
+What changed
+1) Blank-page loop: overflow was detected with scrollHeight. ProseMirror min-height
+   makes every page look "full", so the editor kept peeling empty blocks and creating
+   blank sheets. Now overflow uses the real bottom of the last content node
+   (contentOverflows). Empty nodes are filtered; page-create guards stop loops.
+2) Cursor on new page: after overflow, setActivePage emitted → reconcileSheets mounted
+   the next editor before the intended caret ran; onCreate's rAF then called
+   focus('end'), so the caret jumped to the last (often empty) paragraph. Fixed by
+   suppressing that auto-end focus and applying the mapped pos beside the moved text.
+   Empty next pages are replaced (not prepended before a blank <p>).
+
+How it should work
+- Type until the line crosses the page bottom → only the overflowing line(s) move to
+  the next sheet (may split mid-paragraph).
+- One new page appears when needed; no cascade of blank pages.
+- Caret follows onto the next sheet at the same place in the moved text (next to the
+  character you just typed), not at the end of the page / last paragraph.
+- Typing on a page that still fits must not reflow or steal focus.
+
+Quick checks
+A) Fill page 1 with wrapping text until overflow → page 2 gets the leftover; caret
+   sits at the start of that leftover (or at the typed char), top of page 2.
+B) Keep typing on page 2 → no blank pages; caret stays with the text.
+C) Short text on page 1 → no pagination, caret stays put.
+D) Paste a long block → cascade fills pages with real content only; no empty sheets.

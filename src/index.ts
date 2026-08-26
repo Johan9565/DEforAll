@@ -10,6 +10,10 @@ export {
 export type { PageData, ActivePageFocus } from './types';
 
 export { Toolbar, type ToolbarOptions } from './Toolbar';
+export {
+  EditorContextMenu,
+  type EditorContextMenuOptions,
+} from './EditorContextMenu';
 export { PrintPreview, type PrintPreviewOptions } from './Pagination';
 export { PageStore, createEmptyPage } from './store/PageStore';
 export { PageSheet, type PageSheetOptions } from './pages/PageSheet';

@@ -48,6 +48,8 @@ export class PageSheet {
   private editor: Editor | null = null;
   private options: PageSheetOptions;
   private pendingFocus: ActivePageFocus | null = null;
+  /** When true, onCreate must not default to focus('end') — caller will place the caret. */
+  private suppressAutoFocus = false;
   private staticPointerDown: { x: number; y: number } | null = null;
 
   constructor(options: PageSheetOptions) {
@@ -92,6 +94,8 @@ export class PageSheet {
   public syncFromStore(page: PageData, isActive: boolean): void {
     if (isActive) {
       if (!this.editor) {
+        // setActivePage will apply the real caret; avoid onCreate focusing 'end'
+        this.suppressAutoFocus = true;
         this.mountEditor(page.content);
       }
       return;
@@ -122,8 +126,11 @@ export class PageSheet {
   public activate(content: JSONContent, focus?: ActivePageFocus): void {
     this.pendingFocus = focus ?? { type: 'start' };
     if (this.editor) {
+      // Editor may already exist (syncFromStore raced ahead of setActivePage).
+      // Apply caret now; also keep pendingFocus so a queued onCreate rAF
+      // does not fall through to focus('end').
       this.applyFocus(this.pendingFocus);
-      this.pendingFocus = null;
+      this.suppressAutoFocus = true;
       return;
     }
     this.mountEditor(content);
@@ -216,6 +223,8 @@ export class PageSheet {
             }
             return false;
           },
+          // Let DocumentEditor's custom menu handle this (bubble + preventDefault)
+          contextmenu: () => false,
         },
         handleKeyDown: (_view, event) => this.handleEditorKeyDown(event),
       },
@@ -232,9 +241,16 @@ export class PageSheet {
           if (this.pendingFocus) {
             this.applyFocus(this.pendingFocus);
             this.pendingFocus = null;
-          } else {
-            editor.commands.focus('end');
+            this.suppressAutoFocus = false;
+            return;
           }
+          if (this.suppressAutoFocus) {
+            this.suppressAutoFocus = false;
+            return;
+          }
+          // Default only for unexpected mounts — start, not end (overflow
+          // caret must land beside the moved text at the top of the sheet).
+          editor.commands.focus('start');
         });
       },
     });

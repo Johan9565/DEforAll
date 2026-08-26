@@ -6,6 +6,7 @@ import {
   type JSONContent,
 } from '@tiptap/core';
 import { Toolbar } from './Toolbar';
+import { EditorContextMenu } from './EditorContextMenu';
 import { createDocumentExtensions } from './extensions';
 import { measurePageMetrics, type PageMetrics } from './extensions/pageMetrics';
 import { PageSheet } from './pages/PageSheet';
@@ -17,6 +18,15 @@ import {
   isDocVisuallyEmpty,
   splitOverflowFromContent,
 } from './pages/overflow';
+import {
+  findTextMatches,
+  findTextMatchesInJSON,
+  replaceAllTextMatches,
+  replaceAllTextMatchesInJSON,
+  replaceTextMatch,
+  selectTextMatch,
+  type DocumentSearchMatch,
+} from './pages/findReplace';
 import {
   captureCrossPageSelection,
   deleteCrossPageContent,
@@ -63,6 +73,10 @@ export interface DocumentEditorOptions {
   editable?: boolean;
   /** Show the formatting toolbar. Defaults to true. */
   toolbar?: boolean;
+  /** Custom right-click menu inside page sheets. Defaults to true. */
+  contextMenu?: boolean;
+  /** Title shown in the Word-style title bar. */
+  documentTitle?: string;
   /**
    * Independent physical pages (virtualized TipTap).
    * When false, falls back to a single continuous sheet.
@@ -93,6 +107,7 @@ export class DocumentEditor {
   private readonly store: PageStore;
   private readonly sheets = new Map<string, PageSheet>();
   private readonly toolbar: Toolbar | null = null;
+  private readonly contextMenu: EditorContextMenu | null = null;
   private readonly metrics: PageMetrics;
   private readonly gapPx = 24;
 
@@ -248,6 +263,25 @@ export class DocumentEditor {
       this.toolbar = new Toolbar({
         container: this.workspaceElement,
         getEditor: () => this.activeEditor,
+        documentTitle: options.documentTitle ?? 'Documento',
+        documentSearch: {
+          find: (term, caseSensitive) =>
+            this.findInDocument(term, caseSensitive),
+          goTo: (match) => this.goToSearchMatch(match),
+          replace: (match, replacement) =>
+            this.replaceSearchMatch(match, replacement),
+          replaceAll: (term, replacement, caseSensitive) =>
+            this.replaceAllInDocument(term, replacement, caseSensitive),
+        },
+      });
+    }
+
+    if (options.contextMenu ?? true) {
+      this.contextMenu = new EditorContextMenu({
+        container: this.pagesContainer,
+        getEditor: () => this.activeEditor,
+        editable: this.editable,
+        ensurePageAtPoint: (x, y) => this.ensureActivePageAtPoint(x, y),
       });
     }
 
@@ -284,6 +318,142 @@ export class DocumentEditor {
 
   public getPages(): readonly PageData[] {
     return this.store.getPages();
+  }
+
+  /** Search every page (flushes the active editor into the store first). */
+  public findInDocument(
+    term: string,
+    caseSensitive = false,
+  ): DocumentSearchMatch[] {
+    this.flushActiveToStore();
+    const results: DocumentSearchMatch[] = [];
+    const pages = this.store.getPages();
+    const activeId = this.store.getActivePageId();
+
+    pages.forEach((page, pageIndex) => {
+      const live =
+        page.id === activeId
+          ? this.sheets.get(page.id)?.getEditor()
+          : null;
+      const pageMatches = live
+        ? findTextMatches(live, term, caseSensitive)
+        : findTextMatchesInJSON(
+            page.content,
+            this.extensions,
+            term,
+            caseSensitive,
+          );
+
+      for (const match of pageMatches) {
+        results.push({
+          pageId: page.id,
+          pageIndex,
+          from: match.from,
+          to: match.to,
+        });
+      }
+    });
+
+    return results;
+  }
+
+  public goToSearchMatch(match: DocumentSearchMatch): void {
+    this.setActivePage(match.pageId, { type: 'pos', pos: match.from });
+
+    const sheet = this.sheets.get(match.pageId);
+    sheet?.root.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    const applySelection = () => {
+      const editor = this.sheets.get(match.pageId)?.getEditor();
+      if (!editor?.view) return false;
+      const max = editor.state.doc.content.size;
+      const from = Math.max(0, Math.min(match.from, max));
+      const to = Math.max(from, Math.min(match.to, max));
+      selectTextMatch(editor, { from, to });
+      return true;
+    };
+
+    if (!applySelection()) {
+      requestAnimationFrame(() => {
+        if (!applySelection()) {
+          requestAnimationFrame(() => {
+            applySelection();
+          });
+        }
+      });
+    }
+  }
+
+  public replaceSearchMatch(
+    match: DocumentSearchMatch,
+    replacement: string,
+  ): void {
+    this.goToSearchMatch(match);
+    const tryReplace = () => {
+      const editor = this.sheets.get(match.pageId)?.getEditor();
+      if (!editor) return false;
+      replaceTextMatch(editor, { from: match.from, to: match.to }, replacement);
+      this.flushActiveToStore();
+      this.emitUpdate();
+      return true;
+    };
+    if (!tryReplace()) {
+      requestAnimationFrame(() => {
+        if (!tryReplace()) requestAnimationFrame(() => tryReplace());
+      });
+    }
+  }
+
+  public replaceAllInDocument(
+    term: string,
+    replacement: string,
+    caseSensitive = false,
+  ): number {
+    this.flushActiveToStore();
+    let total = 0;
+    const activeId = this.store.getActivePageId();
+
+    for (const page of this.store.getPages()) {
+      const live =
+        page.id === activeId
+          ? this.sheets.get(page.id)?.getEditor()
+          : null;
+
+      if (live) {
+        total += replaceAllTextMatches(
+          live,
+          term,
+          replacement,
+          caseSensitive,
+        );
+        this.store.setPageContent(page.id, live.getJSON(), live.getHTML(), {
+          silent: true,
+        });
+        continue;
+      }
+
+      const { content, count } = replaceAllTextMatchesInJSON(
+        page.content,
+        this.extensions,
+        term,
+        replacement,
+        caseSensitive,
+      );
+      if (count > 0) {
+        total += count;
+        this.store.setPageContent(
+          page.id,
+          content,
+          generateHTML(content, this.extensions),
+          { silent: true },
+        );
+      }
+    }
+
+    this.reconcileSheets();
+    this.emitUpdate();
+    this.syncToolbarStats();
+    return total;
   }
 
   public getCharacterCount(): number {
@@ -357,6 +527,7 @@ export class DocumentEditor {
       true,
     );
     document.removeEventListener('keydown', this.onDocumentKeyDown, true);
+    this.contextMenu?.destroy();
     this.toolbar?.destroy();
     this.destroyAllSheets();
     this.pagesContainer.remove();
@@ -488,6 +659,26 @@ export class DocumentEditor {
       this.activeEditor = editor;
       this.toolbar?.notifyEditorChanged();
     }
+  }
+
+  /** Activate the sheet under the pointer (used by the context menu). */
+  private ensureActivePageAtPoint(clientX: number, clientY: number): void {
+    if (!this.editable) return;
+    const sheetEl = pageSheetFromPoint(clientX, clientY, this.pagesContainer);
+    const pageId = sheetEl?.dataset.pageId;
+    if (!pageId || !this.store.getPage(pageId)) return;
+
+    if (this.store.getActivePageId() === pageId) {
+      const editor = this.sheets.get(pageId)?.getEditor();
+      if (editor) this.activeEditor = editor;
+      return;
+    }
+
+    this.setActivePage(pageId, {
+      type: 'coords',
+      left: clientX,
+      top: clientY,
+    });
   }
 
   private handlePageNav(
@@ -907,10 +1098,12 @@ export class DocumentEditor {
         if (!next) {
           next = this.store.addPageAfter(fromId, undefined, { silent: true });
         }
-        const nextContent = [
-          ...meaningful,
-          ...(next.content.content ?? []),
-        ];
+        // Replace empty next pages instead of prepending before a blank <p>
+        // (that blank became a trailing paragraph and stole the caret).
+        const existing = next.content.content ?? [];
+        const nextContent = isDocVisuallyEmpty(next.content)
+          ? meaningful
+          : [...meaningful, ...existing];
         const nextJson: JSONContent = { type: 'doc', content: nextContent };
         this.store.setPageContent(
           next.id,
@@ -931,11 +1124,11 @@ export class DocumentEditor {
 
       if (nextId && first.followCursor) {
         followToPageId = nextId;
-        followPosInNext = 1;
-        if (first.cutPos != null) {
-          const offsetInMoved = Math.max(0, selFrom - first.cutPos);
-          followPosInNext = Math.max(1, offsetInMoved);
-        }
+        // Mid-paragraph cut: char at cutPos becomes pos 1 in the new sheet's
+        // first textblock; caret offset within the moved slice is selFrom - cutPos.
+        const offsetInMoved =
+          first.cutPos != null ? Math.max(0, selFrom - first.cutPos) : 0;
+        followPosInNext = Math.max(1, 1 + offsetInMoved);
       }
 
       let guard = 0;
@@ -995,10 +1188,9 @@ export class DocumentEditor {
             });
           }
 
-          const nextContent = [
-            ...meaningfulOverflow,
-            ...(next.content.content ?? []),
-          ];
+          const nextContent = isDocVisuallyEmpty(next.content)
+            ? meaningfulOverflow
+            : [...meaningfulOverflow, ...(next.content.content ?? [])];
           const nextJson: JSONContent = { type: 'doc', content: nextContent };
           this.store.setPageContent(
             next.id,

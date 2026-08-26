@@ -1,11 +1,13 @@
+@tailwind utilities;
+
 /* Workspace */
 .cde-workspace {
-  background-color: #e5e7eb;
-  padding: 1rem 1rem 2rem;
+  background-color: #ececec;
+  padding: 0 0 2rem;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   box-sizing: border-box;
 }
 
@@ -47,6 +49,7 @@
   align-items: center;
   width: 100%;
   box-sizing: border-box;
+  padding: 1.25rem 1rem 0;
   /* Allow native highlight across static + TipTap sheets */
   user-select: text;
   -webkit-user-select: text;
@@ -114,36 +117,20 @@
 }
 
 .cde-page-sheet__num {
-  position: absolute;
-  right: 0.75rem;
-  bottom: 0.45rem;
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: 0.7rem;
-  color: #9ca3af;
-  pointer-events: none;
-  user-select: none;
+  @apply absolute right-3 bottom-[0.45rem] font-ui text-[0.7rem] text-gray-400 pointer-events-none select-none;
 }
 
 /*
- * Zero layout shift: identical typography for static HTML and TipTap .ProseMirror.
- * Body area = page height − 2× margin (letter: 11in − 2in, a4: 297mm − 5.08cm).
+ * Option 2 (Tailwind + TipTap): @apply under shared selectors so static HTML
+ * and .ProseMirror share identical metrics — required for stable pagination.
+ * Arbitrary values mirror the previous plain-CSS sizes (em/pt), not rem defaults.
  */
 .cde-page-content,
 .cde-page-sheet .ProseMirror,
 .cde-page-sheet__static {
+  /* outline:none as plain CSS — Tailwind outline-none is a 2px transparent outline */
   outline: none;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 100%;
-  margin: 0;
-  padding: 0;
-  color: #111827;
-  font-family: 'Times New Roman', Times, Georgia, serif;
-  font-size: 12pt;
-  line-height: 1.5;
-  background: transparent;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
+  @apply box-border w-full min-h-full m-0 p-0 font-doc text-gray-900 text-[12pt] leading-[1.5] bg-transparent break-words;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -173,7 +160,49 @@
 .cde-page-content p,
 .cde-page-sheet__static p,
 .cde-page-sheet .ProseMirror p {
-  margin: 0 0 0.75em;
+  @apply m-0 mb-[0.75em];
+}
+
+/* Paragraph / heading indent (sangría) */
+.cde-page-content [data-indent='1'],
+.cde-page-sheet__static [data-indent='1'],
+.cde-page-sheet .ProseMirror [data-indent='1'] {
+  margin-left: 24px;
+}
+.cde-page-content [data-indent='2'],
+.cde-page-sheet__static [data-indent='2'],
+.cde-page-sheet .ProseMirror [data-indent='2'] {
+  margin-left: 48px;
+}
+.cde-page-content [data-indent='3'],
+.cde-page-sheet__static [data-indent='3'],
+.cde-page-sheet .ProseMirror [data-indent='3'] {
+  margin-left: 72px;
+}
+.cde-page-content [data-indent='4'],
+.cde-page-sheet__static [data-indent='4'],
+.cde-page-sheet .ProseMirror [data-indent='4'] {
+  margin-left: 96px;
+}
+.cde-page-content [data-indent='5'],
+.cde-page-sheet__static [data-indent='5'],
+.cde-page-sheet .ProseMirror [data-indent='5'] {
+  margin-left: 120px;
+}
+.cde-page-content [data-indent='6'],
+.cde-page-sheet__static [data-indent='6'],
+.cde-page-sheet .ProseMirror [data-indent='6'] {
+  margin-left: 144px;
+}
+.cde-page-content [data-indent='7'],
+.cde-page-sheet__static [data-indent='7'],
+.cde-page-sheet .ProseMirror [data-indent='7'] {
+  margin-left: 168px;
+}
+.cde-page-content [data-indent='8'],
+.cde-page-sheet__static [data-indent='8'],
+.cde-page-sheet .ProseMirror [data-indent='8'] {
+  margin-left: 192px;
 }
 
 .cde-page-content h1,
@@ -185,8 +214,7 @@
 .cde-page-sheet .ProseMirror h1,
 .cde-page-sheet .ProseMirror h2,
 .cde-page-sheet .ProseMirror h3 {
-  margin: 1em 0 0.5em;
-  line-height: 1.25;
+  @apply mt-[1em] mb-[0.5em] mx-0 leading-[1.25];
 }
 
 .cde-page-content ul,
@@ -195,18 +223,13 @@
 .cde-page-sheet__static ol,
 .cde-page-sheet .ProseMirror ul,
 .cde-page-sheet .ProseMirror ol {
-  margin: 0 0 0.75em;
-  padding-left: 1.5em;
+  @apply m-0 mb-[0.75em] pl-[1.5em];
 }
 
 .cde-page-content table,
 .cde-page-sheet__static table,
 .cde-page-sheet .ProseMirror table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0 0 1em;
-  table-layout: fixed;
-  overflow: hidden;
+  @apply border-collapse table-fixed w-full mb-[1em] overflow-hidden;
 }
 
 .cde-page-content td,
@@ -215,17 +238,14 @@
 .cde-page-sheet__static th,
 .cde-page-sheet .ProseMirror td,
 .cde-page-sheet .ProseMirror th {
-  border: 1px solid #d1d5db;
-  padding: 0.35em 0.5em;
-  vertical-align: top;
-  position: relative;
+  /* border-solid required when Tailwind preflight is off */
+  @apply border border-solid border-gray-300 py-[0.35em] px-[0.5em] align-top relative;
 }
 
 .cde-page-content th,
 .cde-page-sheet__static th,
 .cde-page-sheet .ProseMirror th {
-  background: #f9fafb;
-  font-weight: 600;
+  @apply bg-gray-50 font-semibold;
 }
 
 .cde-page-sheet .selectedCell::after {
@@ -253,7 +273,7 @@
 
 .cde-page-sheet .is-editor-empty:first-child::before,
 .cde-page-sheet p.is-empty::before {
-  color: #9ca3af;
+  @apply text-gray-400;
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -263,115 +283,82 @@
 .cde-page-content a.cde-link,
 .cde-page-sheet__static a.cde-link,
 .cde-page-sheet .ProseMirror a.cde-link {
-  color: #1d4ed8;
-  text-decoration: underline;
-  cursor: pointer;
+  @apply text-blue-700 underline cursor-pointer;
 }
 
 .cde-page-content img.cde-image,
 .cde-page-sheet__static img.cde-image,
 .cde-page-sheet .ProseMirror img.cde-image {
-  max-width: 100%;
-  height: auto;
-  display: block;
-  margin: 0.75em 0;
+  @apply max-w-full h-auto block my-[0.75em];
 }
 
 .cde-page-content blockquote,
 .cde-page-sheet__static blockquote,
 .cde-page-sheet .ProseMirror blockquote {
-  margin: 0 0 0.75em;
-  padding-left: 1em;
-  border-left: 3px solid #d1d5db;
-  color: #374151;
+  @apply m-0 mb-[0.75em] pl-[1em] border-l-[3px] border-solid border-gray-300 text-gray-700;
 }
 
 .cde-page-content code,
 .cde-page-sheet__static code,
 .cde-page-sheet .ProseMirror code {
-  font-family: 'Courier New', monospace;
-  font-size: 0.92em;
-  background: #f3f4f6;
-  padding: 0.1em 0.3em;
-  border-radius: 0.2em;
+  @apply font-monoDoc text-[0.92em] bg-gray-100 py-[0.1em] px-[0.3em] rounded-[0.2em];
 }
 
 .cde-page-content pre,
 .cde-page-sheet__static pre,
 .cde-page-sheet .ProseMirror pre {
-  background: #111827;
-  color: #f9fafb;
-  font-family: 'Courier New', monospace;
-  font-size: 0.9em;
-  padding: 0.75em 1em;
-  border-radius: 0.35rem;
-  overflow-x: auto;
-  margin: 0 0 0.75em;
+  @apply bg-gray-900 text-gray-50 font-monoDoc text-[0.9em] py-[0.75em] px-[1em] rounded-[0.35rem] overflow-x-auto m-0 mb-[0.75em];
 }
 
 .cde-page-content pre code,
 .cde-page-sheet__static pre code,
 .cde-page-sheet .ProseMirror pre code {
-  background: none;
-  color: inherit;
-  padding: 0;
+  @apply bg-transparent text-inherit p-0;
 }
 
 .cde-page-content hr,
 .cde-page-sheet__static hr,
 .cde-page-sheet .ProseMirror hr {
-  border: none;
-  border-top: 1px solid #d1d5db;
-  margin: 1.25em 0;
+  @apply border-0 border-t border-solid border-gray-300 my-[1.25em];
 }
 
 .cde-page-content mark,
 .cde-page-sheet__static mark,
 .cde-page-sheet .ProseMirror mark {
-  border-radius: 0.15em;
-  padding: 0.05em 0.15em;
+  @apply rounded-[0.15em] py-[0.05em] px-[0.15em];
 }
 
 .cde-page-content ul[data-type='taskList'],
 .cde-page-sheet__static ul[data-type='taskList'],
 .cde-page-sheet .ProseMirror ul[data-type='taskList'] {
-  list-style: none;
-  padding-left: 0.25em;
+  @apply list-none pl-[0.25em];
 }
 
 .cde-page-content ul[data-type='taskList'] li,
 .cde-page-sheet__static ul[data-type='taskList'] li,
 .cde-page-sheet .ProseMirror ul[data-type='taskList'] li {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5em;
+  @apply flex items-start gap-[0.5em];
 }
 
 .cde-page-content ul[data-type='taskList'] li > label,
 .cde-page-sheet__static ul[data-type='taskList'] li > label,
 .cde-page-sheet .ProseMirror ul[data-type='taskList'] li > label {
-  flex: 0 0 auto;
-  margin-top: 0.2em;
+  @apply flex-none mt-[0.2em];
 }
 
 .cde-page-content ul[data-type='taskList'] li > div,
 .cde-page-sheet__static ul[data-type='taskList'] li > div,
 .cde-page-sheet .ProseMirror ul[data-type='taskList'] li > div {
-  flex: 1 1 auto;
+  @apply flex-auto;
 }
 
 /* Legacy single-sheet (pagination=false still uses page-sheet stack of 1) */
 .cde-page {
-  background: #ffffff;
+  outline: none;
+  @apply bg-white font-doc text-gray-900 text-[12pt] leading-[1.5] box-border;
   box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  box-sizing: border-box;
-  outline: none;
-  color: #111827;
-  font-family: 'Times New Roman', Times, Georgia, serif;
-  font-size: 12pt;
-  line-height: 1.5;
 }
 
 .cde-page--letter {

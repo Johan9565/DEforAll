@@ -19,6 +19,9 @@ import Superscript from '@tiptap/extension-superscript';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Typography from '@tiptap/extension-typography';
+import { FontSize } from './fontSize';
+import { Indent } from './indent';
+import { LineHeight } from './lineHeight';
 
 /**
  * Free/open-source TipTap extensions useful for a formal document editor.
@@ -34,6 +37,9 @@ export function createDocumentExtensions(options?: {
     Underline,
     TextStyle,
     Color,
+    FontSize,
+    Indent,
+    LineHeight,
     FontFamily.configure({
       types: ['textStyle'],
     }),
