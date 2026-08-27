@@ -320,14 +320,14 @@ export class WidgetTableView implements NodeView {
     leftHandle.className = 'cde-wt__col-handle cde-wt__col-handle--left';
     leftHandle.title = 'Arrastrar para cambiar el ancho de la primera columna';
     leftHandle.style.left = '0px';
+    leftHandle.style.top = '0px';
     leftHandle.style.height = `${gridHeight}px`;
     leftHandle.addEventListener('mousedown', (e) => this.startLeftColResize(e, data));
     this.handleLayer.appendChild(leftHandle);
 
-    // Collect exact column boundary positions across all rows
-    const colEdges = new Map<number, { gridColIndex: number; right: number }>();
     const rows = this.grid.querySelectorAll('tbody > tr');
 
+    // Create cell-scoped column & row resize handles for each cell
     rows.forEach((tr, r) => {
       let currentVirtualCol = 0;
       const cells = tr.querySelectorAll('th, td');
@@ -336,22 +336,39 @@ export class WidgetTableView implements NodeView {
         const span = cellData?.colspan || 1;
         currentVirtualCol += span;
         const targetColIdx = currentVirtualCol - 1;
-        const cellEl = td as HTMLElement;
-        const right = cellEl.offsetLeft + cellEl.offsetWidth;
-        if (!colEdges.has(targetColIdx) || right > (colEdges.get(targetColIdx)?.right ?? 0)) {
-          colEdges.set(targetColIdx, { gridColIndex: targetColIdx, right });
-        }
-      });
-    });
 
-    colEdges.forEach(({ gridColIndex, right }) => {
-      const handle = document.createElement('div');
-      handle.className = 'cde-wt__col-handle';
-      handle.title = 'Arrastrar para cambiar el ancho';
-      handle.style.left = `${right}px`;
-      handle.style.height = `${gridHeight}px`;
-      handle.addEventListener('mousedown', (e) => this.startColResize(e, gridColIndex, right, data));
-      this.handleLayer.appendChild(handle);
+        const cellEl = td as HTMLElement;
+        const cellX = cellEl.offsetLeft;
+        const cellY = cellEl.offsetTop;
+        const cellW = cellEl.offsetWidth;
+        const cellH = cellEl.offsetHeight;
+        const right = cellX + cellW;
+        const bottom = cellY + cellH;
+
+        // Vertical right border handle (scoped strictly to this cell's height and vertical span)
+        const colHandle = document.createElement('div');
+        colHandle.className = 'cde-wt__col-handle';
+        colHandle.title = 'Arrastrar para cambiar el ancho';
+        colHandle.style.left = `${right}px`;
+        colHandle.style.top = `${cellY}px`;
+        colHandle.style.height = `${cellH}px`;
+        colHandle.addEventListener('mousedown', (e) =>
+          this.startColResize(e, targetColIdx, right, cellY, cellH, data),
+        );
+        this.handleLayer.appendChild(colHandle);
+
+        // Horizontal bottom border handle (scoped strictly to this cell's width and horizontal span)
+        const rowHandle = document.createElement('div');
+        rowHandle.className = 'cde-wt__row-handle';
+        rowHandle.title = 'Arrastrar para cambiar el alto';
+        rowHandle.style.top = `${bottom}px`;
+        rowHandle.style.left = `${cellX}px`;
+        rowHandle.style.width = `${cellW}px`;
+        rowHandle.addEventListener('mousedown', (e) =>
+          this.startRowResize(e, r, bottom, cellX, cellW, data),
+        );
+        this.handleLayer.appendChild(rowHandle);
+      });
     });
 
     // Spacing / Margin handle on right edge
@@ -364,19 +381,6 @@ export class WidgetTableView implements NodeView {
     marginHandle.style.height = `${gridHeight}px`;
     marginHandle.addEventListener('mousedown', (e) => this.handleMarginClickOrDrag(e, data));
     this.handleLayer.appendChild(marginHandle);
-
-    // Measure exact DOM boundaries for rows
-    rows.forEach((tr, i) => {
-      const trEl = tr as HTMLElement;
-      const bottom = trEl.offsetTop + trEl.offsetHeight;
-      const handle = document.createElement('div');
-      handle.className = 'cde-wt__row-handle';
-      handle.title = 'Arrastrar para cambiar el alto';
-      handle.style.top = `${bottom}px`;
-      handle.style.width = `${gridWidth}px`;
-      handle.addEventListener('mousedown', (e) => this.startRowResize(e, i, bottom, data));
-      this.handleLayer.appendChild(handle);
-    });
   }
 
   private handleMarginClickOrDrag(event: MouseEvent, snapshot: WidgetTableAttrs): void {
@@ -394,6 +398,7 @@ export class WidgetTableView implements NodeView {
 
     let guide: HTMLElement | null = null;
     const gridW = this.grid.offsetWidth || tablePixelWidth(snapshot);
+    const gridH = this.grid.offsetHeight;
 
     const onMove = (e: MouseEvent): void => {
       const deltaX = e.clientX - startX;
@@ -403,6 +408,8 @@ export class WidgetTableView implements NodeView {
         guide = document.createElement('div');
         guide.className = 'cde-wt__guide cde-wt__guide--col';
         guide.style.left = `${gridW + startM}px`;
+        guide.style.top = '0px';
+        guide.style.height = `${gridH}px`;
         this.dom.appendChild(guide);
       }
 
@@ -469,6 +476,7 @@ export class WidgetTableView implements NodeView {
     const guide = document.createElement('div');
     guide.className = 'cde-wt__guide cde-wt__guide--col';
     guide.style.left = '0px';
+    guide.style.top = '0px';
     guide.style.height = `${this.grid.offsetHeight}px`;
 
     const badge = document.createElement('div');
@@ -512,6 +520,8 @@ export class WidgetTableView implements NodeView {
     event: MouseEvent,
     colIndex: number,
     initialRight: number,
+    cellY: number,
+    cellH: number,
     snapshot: WidgetTableAttrs,
   ): void {
     if (event.button !== 0) return;
@@ -528,7 +538,8 @@ export class WidgetTableView implements NodeView {
     const guide = document.createElement('div');
     guide.className = 'cde-wt__guide cde-wt__guide--col';
     guide.style.left = `${initialRight}px`;
-    guide.style.height = `${this.grid.offsetHeight}px`;
+    guide.style.top = `${cellY}px`;
+    guide.style.height = `${cellH}px`;
 
     const badge = document.createElement('div');
     badge.className = 'cde-wt__guide-badge';
@@ -575,6 +586,8 @@ export class WidgetTableView implements NodeView {
     event: MouseEvent,
     row: number,
     initialBottom: number,
+    cellX: number,
+    cellW: number,
     snapshot: WidgetTableAttrs,
   ): void {
     if (event.button !== 0) return;
@@ -593,7 +606,8 @@ export class WidgetTableView implements NodeView {
     const guide = document.createElement('div');
     guide.className = 'cde-wt__guide cde-wt__guide--row';
     guide.style.top = `${initialBottom}px`;
-    guide.style.width = `${this.grid.offsetWidth}px`;
+    guide.style.left = `${cellX}px`;
+    guide.style.width = `${cellW}px`;
 
     const badge = document.createElement('div');
     badge.className = 'cde-wt__guide-badge';

@@ -439,13 +439,10 @@
 }
 
 .cde-wt__guide--col {
-  top: 0;
-  bottom: 0;
   width: 2px;
 }
 
 .cde-wt__guide--row {
-  left: 0;
   height: 2px;
 }
 
