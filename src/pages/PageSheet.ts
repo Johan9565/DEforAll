@@ -6,6 +6,7 @@ import {
 } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import type { ActivePageFocus, PageData, PageSize } from '../types';
+import { migrateDocTables } from '../extensions/widgetTable/model';
 
 export interface PageSheetOptions {
   page: PageData;
@@ -117,7 +118,7 @@ export class PageSheet {
   /** Replace content in the live editor or static mirror without remounting the sheet. */
   public replaceContent(content: JSONContent, html: string): void {
     if (this.editor) {
-      this.editor.commands.setContent(content, false);
+      this.editor.commands.setContent(migrateDocTables(content) as JSONContent, false);
       return;
     }
     this.renderStatic(html);
@@ -210,7 +211,7 @@ export class PageSheet {
     this.editor = new Editor({
       element: mount,
       extensions: this.extensions,
-      content,
+      content: migrateDocTables(content) as JSONContent,
       editable: this.editable,
       editorProps: {
         attributes: {

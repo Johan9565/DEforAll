@@ -120,22 +120,7 @@ function collectNodeUnits(
   }
 
   if (type === 'table') {
-    const units: MeasuredUnit[] = [];
-    let pos = nodePos + 1;
-    for (let i = 0; i < node.childCount; i += 1) {
-      const row = node.child(i);
-      const rowPos = pos;
-      units.push({
-        pos: rowPos,
-        height: measureDomHeight(view, rowPos),
-      });
-      pos += row.nodeSize;
-    }
-    const margin = blockMarginBottom(view, nodePos);
-    if (margin > 0 && units.length > 0) {
-      units[units.length - 1]!.height += margin;
-    }
-    return units;
+    return [{ pos: nodePos, height: measureDomHeight(view, nodePos) }];
   }
 
   if (node.isTextblock) {

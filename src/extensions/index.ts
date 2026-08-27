@@ -1,9 +1,5 @@
 import type { Extensions } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
@@ -22,6 +18,7 @@ import Typography from '@tiptap/extension-typography';
 import { FontSize } from './fontSize';
 import { Indent } from './indent';
 import { LineHeight } from './lineHeight';
+import { WidgetTable } from './widgetTable/WidgetTable';
 
 /**
  * Free/open-source TipTap extensions useful for a formal document editor.
@@ -64,10 +61,7 @@ export function createDocumentExtensions(options?: {
     TextAlign.configure({
       types: ['heading', 'paragraph'],
     }),
-    Table.configure({ resizable: true }),
-    TableRow,
-    TableHeader,
-    TableCell,
+    WidgetTable,
     TaskList,
     TaskItem.configure({
       nested: true,

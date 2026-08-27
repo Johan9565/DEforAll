@@ -1180,6 +1180,16 @@ export class Toolbar {
           run: () => {
             const url = window.prompt('URL de la imagen');
             if (!url?.trim()) return;
+            const tableStorage = ed()?.storage?.table as { activeWidget?: { readCellsFromDom: () => void } } | undefined;
+            if (tableStorage?.activeWidget && document.activeElement?.closest('.cde-wt__cell')) {
+              document.execCommand(
+                'insertHTML',
+                false,
+                `<img src="${url.trim()}" class="cde-wt__img" style="max-width:100%;height:auto;display:block;margin:0.25em 0;" />`,
+              );
+              tableStorage.activeWidget.readCellsFromDom();
+              return;
+            }
             ed()?.chain().focus().setImage({ src: url.trim() }).run();
           },
         },
@@ -1215,6 +1225,30 @@ export class Toolbar {
         label: '<span class="text-[10px] font-bold">+C</span>',
         isDisabled: () => !(ed()?.can().addColumnAfter() ?? false),
         run: () => ed()?.chain().focus().addColumnAfter().run(),
+      }),
+      this.createButton({
+        title: 'Eliminar fila',
+        label: '<span class="text-[10px] font-bold">−F</span>',
+        isDisabled: () => !(ed()?.can().deleteRow() ?? false),
+        run: () => ed()?.chain().focus().deleteRow().run(),
+      }),
+      this.createButton({
+        title: 'Eliminar columna',
+        label: '<span class="text-[10px] font-bold">−C</span>',
+        isDisabled: () => !(ed()?.can().deleteColumn() ?? false),
+        run: () => ed()?.chain().focus().deleteColumn().run(),
+      }),
+      this.createButton({
+        title: 'Fusionar celdas',
+        label: '<span class="text-[10px] font-bold">Unir</span>',
+        isDisabled: () => !(ed()?.can().mergeCells() ?? false),
+        run: () => ed()?.chain().focus().mergeCells().run(),
+      }),
+      this.createButton({
+        title: 'Dividir celda',
+        label: '<span class="text-[10px] font-bold">Div</span>',
+        isDisabled: () => !(ed()?.can().splitCell() ?? false),
+        run: () => ed()?.chain().focus().splitCell().run(),
       }),
       this.createButton({
         title: 'Eliminar tabla',

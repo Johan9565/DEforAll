@@ -23,6 +23,10 @@ export {
   isDocVisuallyEmpty,
 } from './pages/overflow';
 export {
+  splitTableOnOverflow,
+  splitTableAtLimitY,
+} from './pages/tableSplit';
+export {
   captureCrossPageSelection,
   deleteCrossPageContent,
   deleteFromCrossPageSnapshot,
@@ -46,5 +50,6 @@ export {
 } from './extensions/virtualPageLayout';
 export { measurePageMetrics, type PageMetrics } from './extensions/pageMetrics';
 export { createDocumentExtensions } from './extensions';
+export { WidgetTable } from './extensions/widgetTable/WidgetTable';
 
 export type { Editor, JSONContent, Extensions } from '@tiptap/core';

@@ -45,6 +45,7 @@ import {
   setNativeSelectionFromPoints,
 } from './pages/nativeSelection';
 import { createEmptyPage, PageStore } from './store/PageStore';
+import { migrateDocTables } from './extensions/widgetTable/model';
 import type {
   ActivePageFocus,
   DocumentContent,
@@ -547,6 +548,7 @@ export class DocumentEditor {
     }
 
     if (!json.type) json = { type: 'doc', content: json.content ?? [] };
+    json = migrateDocTables(json);
 
     const html = generateHTML(json, this.extensions);
     const page = createEmptyPage(html);
@@ -702,6 +704,14 @@ export class DocumentEditor {
     fromStatic: boolean,
   ): void {
     if (!this.editable) return;
+
+    const target = event.target;
+    if (target instanceof Element) {
+      // Table chrome / row-resize — do not steal for cross-page select
+      if (target.closest('.cde-wt, .cde-table-chrome, .cde-table-wrapper')) return;
+    }
+    const editor = this.sheets.get(pageId)?.getEditor();
+    if (editor?.view.dom.classList.contains('resize-cursor')) return;
 
     // New gesture replaces any held cross-page selection
     this.clearHeldNativeSelection();
@@ -1271,4 +1281,5 @@ export class DocumentEditor {
     this.toolbar?.setDocumentStats({ characters, words });
     this.toolbar?.setPageCount(this.store.getPageCount());
   }
+
 }

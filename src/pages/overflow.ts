@@ -1,6 +1,8 @@
 import { Editor, type Extensions, type JSONContent } from '@tiptap/core';
+import type { Node as ProseNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import type { PageSize } from '../types';
+import { splitTableAtLimitY } from './tableSplit';
 
 export interface OverflowExtractResult {
   /** Top-level JSON nodes to prepend onto the next page. */
@@ -142,9 +144,135 @@ function snapToLineStart(view: EditorView, pos: number): number {
 }
 
 /**
+ * Widget tables are atoms (no inner PM positions). Find a table whose DOM
+ * straddles the page limit and split it by whole rows.
+ */
+function findStraddlingTable(
+  view: EditorView,
+  limitY: number,
+): { pos: number; node: ProseNode } | null {
+  const { doc } = view.state;
+  let pos = 0;
+  for (let i = 0; i < doc.childCount; i += 1) {
+    const node = doc.child(i);
+    if (node.type.name === 'table') {
+      const tableDom = resolveTableDom(view, pos, node);
+      if (tableDom) {
+        const rect = tableDom.getBoundingClientRect();
+        if (rect.top < limitY && rect.bottom > limitY) {
+          return { pos, node };
+        }
+      }
+    }
+    pos += node.nodeSize;
+  }
+  return null;
+}
+
+function extractTableOverflow(
+  editor: Editor,
+  bodyHeightPx: number,
+  selectionFrom: number,
+): OverflowExtractResult | null {
+  const { doc } = editor.state;
+  const editorTop = (editor.view.dom as HTMLElement).getBoundingClientRect()
+    .top;
+  const limitY = editorTop + bodyHeightPx - 2;
+  const found = findStraddlingTable(editor.view, limitY);
+  if (!found) return null;
+
+  const { pos: tablePos, node: tableNode } = found;
+  const tableEnd = tablePos + tableNode.nodeSize;
+  const tableDom = resolveTableDom(editor.view, tablePos, tableNode);
+  if (!tableDom) return null;
+
+  const isTop = tablePos <= 1;
+  const { table1, table2 } = splitTableAtLimitY(
+    tableNode.toJSON() as JSONContent,
+    tableDom,
+    limitY,
+    isTop,
+  );
+
+  if (!table2) return null;
+
+  // Nothing fits on this page — only move if there is content before the table
+  if (!table1) {
+    if (isTop && tableEnd >= doc.content.size) {
+      return { moved: [], cutPos: null, followCursor: false };
+    }
+    const slice = doc.slice(tablePos, doc.content.size);
+    const moved = filterMeaningfulNodes(fragmentToJson(slice.content));
+    if (moved.length === 0) {
+      return { moved: [], cutPos: null, followCursor: false };
+    }
+    const followCursor = selectionFrom >= tablePos;
+    const beforeSize = doc.content.size;
+    editor
+      .chain()
+      .command(({ tr, dispatch }) => {
+        if (dispatch) {
+          tr.delete(tablePos, doc.content.size);
+          tr.setMeta('addToHistory', false);
+          dispatch(tr);
+        }
+        return true;
+      })
+      .run();
+    if (editor.state.doc.content.size >= beforeSize) {
+      return { moved: [], cutPos: null, followCursor: false };
+    }
+    return { moved, cutPos: tablePos, followCursor };
+  }
+
+  const afterSlice = doc.slice(tableEnd, doc.content.size);
+  const afterNodes = filterMeaningfulNodes(
+    fragmentToJson(afterSlice.content),
+  );
+  const moved = filterMeaningfulNodes([table2, ...afterNodes]);
+  if (moved.length === 0) {
+    return { moved: [], cutPos: null, followCursor: false };
+  }
+
+  const followCursor = selectionFrom >= tablePos;
+  const beforeSize = doc.content.size;
+
+  editor
+    .chain()
+    .command(({ tr, dispatch, editor: ed }) => {
+      if (!dispatch) return true;
+      const kept = ed.schema.nodeFromJSON(table1);
+      tr.replaceWith(tablePos, doc.content.size, kept);
+      tr.setMeta('addToHistory', false);
+      dispatch(tr);
+      return true;
+    })
+    .run();
+
+  if (editor.state.doc.content.size >= beforeSize) {
+    return { moved: [], cutPos: null, followCursor: false };
+  }
+
+  return { moved, cutPos: tablePos, followCursor };
+}
+
+function resolveTableDom(
+  view: EditorView,
+  tablePos: number,
+  _tableNode: ProseNode,
+): HTMLElement | null {
+  const nodeDom = view.nodeDOM(tablePos);
+  if (!(nodeDom instanceof HTMLElement)) return null;
+  if (nodeDom.tagName === 'TABLE') return nodeDom;
+  const inner = nodeDom.querySelector('table');
+  return inner instanceof HTMLElement ? inner : nodeDom;
+}
+
+/**
  * Cut overflowing content at a visual line boundary (may split a paragraph).
  * Falls back to moving whole trailing blocks only when a mid-block split isn't possible
  * AND content truly overflows (not min-height false positive).
+ * Tables are partitioned by whole rows when the cut lands inside one.
  */
 export function extractOverflow(
   editor: Editor,
@@ -155,8 +283,16 @@ export function extractOverflow(
     return { moved: [], cutPos: null, followCursor: false };
   }
 
+  const tableResult = extractTableOverflow(
+    editor,
+    bodyHeightPx,
+    selectionFrom,
+  );
+  if (tableResult) return tableResult;
+
   const cutPos = findOverflowCutPos(editor.view, bodyHeightPx);
   if (cutPos != null && cutPos > 1) {
+
     const doc = editor.state.doc;
     const end = doc.content.size;
     if (cutPos < end) {
