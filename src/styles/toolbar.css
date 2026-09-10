@@ -58,21 +58,25 @@
 /* Tabs */
 .cde-toolbar [role='tablist'] {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-end;
   background: #f3f4f6;
   padding: 0 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .cde-toolbar [role='tab'] {
   position: relative;
-  margin: 0 0.35rem;
-  padding: 0.2rem 0.1rem;
+  margin: 0 0.25rem;
+  padding: 0.25rem 0.45rem;
   border: 0;
   background: transparent;
   font-size: 12px;
   color: #262626;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .cde-toolbar [role='tab'][aria-selected='true'] {
@@ -144,6 +148,7 @@
   background: transparent;
   color: #262626;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .cde-tb-btn:hover:not(:disabled) {
@@ -166,10 +171,134 @@
   padding: 0.25rem 0.35rem;
 }
 
+.cde-tb-btn--text {
+  width: auto !important;
+  min-width: 2rem;
+  height: 1.5rem;
+  padding: 0.15rem 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.cde-tb-btn--text span {
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.cde-tb-btn--split {
+  width: auto !important;
+  min-width: 1.85rem;
+  height: 1.5rem;
+  padding: 0 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+}
+
+.cde-color-trigger {
+  width: auto !important;
+  min-width: 1.85rem;
+  padding: 0 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+}
+
+.cde-color-trigger .cde-tb-btn__face {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.cde-color-trigger__letter {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cde-color-trigger__swatch {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 1px;
+}
+
+.cde-color-trigger__caption {
+  font-size: 10px;
+  font-weight: 500;
+  margin: 0 0.15rem;
+  white-space: nowrap;
+}
+
+.cde-tb-btn__face {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.cde-tb-btn__caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 1px;
+}
+
 .cde-tb-btn:disabled,
 .cde-tb-qat:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Strict Icon Rules */
+.cde-toolbar svg,
+.cde-tb-btn svg,
+.cde-tb-qat svg,
+.cde-tb-icon {
+  display: inline-block !important;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+  max-width: 14px !important;
+  max-height: 14px !important;
+  flex-shrink: 0 !important;
+  vertical-align: middle !important;
+}
+
+.cde-tb-btn--lg svg {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  max-width: 18px !important;
+  max-height: 18px !important;
+}
+
+.cde-tb-caret {
+  width: 9px !important;
+  height: 9px !important;
+  min-width: 9px !important;
+  min-height: 9px !important;
+  max-width: 9px !important;
+  max-height: 9px !important;
+  margin-left: 2px !important;
 }
 
 .cde-tb-style {
@@ -198,21 +327,84 @@
   box-shadow: inset 0 0 0 1px #2563eb;
 }
 
-.cde-toolbar svg {
-  width: 0.875rem;
-  height: 0.875rem;
+/* Table Styles Gallery & Presets */
+.cde-tb-tablestyles {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(22rem, 36vw);
+  overflow-x: auto;
+  padding: 0.15rem 0.2rem;
+  scrollbar-width: thin;
+}
+
+.cde-tb-tablestyle {
+  position: relative;
+  display: inline-flex;
+  width: 4.1rem;
+  height: 2.85rem;
   flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  border-radius: 0.25rem;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  padding: 0.25rem 0.2rem;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.cde-tb-tablestyle:hover:not(:disabled) {
+  border-color: #3b82f6;
+  background: #f8fafc;
+}
+
+.cde-tb-tablestyle[aria-pressed='true'] {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.cde-tb-tablestyle__preview {
+  display: flex;
+  flex-direction: column;
+  width: 3.4rem;
+  height: 1.35rem;
+  border-radius: 2px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cde-tb-tablestyle__row {
   display: block;
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.cde-tb-btn--lg svg {
-  width: 1.15rem;
-  height: 1.15rem;
+.cde-tb-tablestyle__name {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 500;
+  color: #374151;
+  line-height: 1;
 }
 
-/* Custom combo selects (not native <select>) */
+/* ==========================================================================
+   Custom Combos & Dropdown Menus
+   ========================================================================== */
+
 .cde-combo {
   position: relative;
+  display: inline-block;
 }
 
 .cde-combo__trigger {
@@ -221,36 +413,43 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.25rem;
-  border-radius: 0.375rem;
-  border: 1px solid #d4d4d4;
-  background: linear-gradient(to bottom, #fff, #fafafa);
+  border-radius: 0.25rem;
+  border: 1px solid #d1d5db;
+  background: linear-gradient(to bottom, #ffffff, #f9fafb);
   padding: 0 0.35rem;
   font-size: 11px;
-  color: #262626;
-  box-shadow: 0 1px 1px rgb(0 0 0 / 0.04);
+  color: #1f2937;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 .cde-combo--font .cde-combo__trigger,
 .cde-combo__trigger[data-wide='true'] {
   min-width: 8.5rem;
-  max-width: 10rem;
+  max-width: 10.5rem;
 }
 
 .cde-combo--size .cde-combo__trigger,
 .cde-combo__trigger[data-narrow='true'] {
   min-width: 2.75rem;
-  max-width: 3.25rem;
+  max-width: 3.5rem;
+}
+
+.cde-combo--border .cde-combo__trigger {
+  min-width: 5.5rem;
+  max-width: 6.5rem;
 }
 
 .cde-combo__trigger:hover:not(:disabled) {
   border-color: #93c5fd;
-  background: linear-gradient(to bottom, #fff, #eff6ff);
+  background: linear-gradient(to bottom, #ffffff, #eff6ff);
 }
 
 .cde-combo.is-open .cde-combo__trigger {
-  border-color: #60a5fa;
-  background: linear-gradient(to bottom, #fff, #eff6ff);
-  box-shadow: 0 0 0 1px #bfdbfe;
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px #3b82f6;
 }
 
 .cde-combo__label {
@@ -267,18 +466,17 @@
   left: 0;
   top: calc(100% + 2px);
   z-index: 50;
-  max-height: 12rem;
+  max-height: 14rem;
   min-width: 100%;
-  overflow: auto;
+  overflow-y: auto;
   border-radius: 0.375rem;
   border: 1px solid #e5e7eb;
-  background: #fff;
-  padding: 0.2rem 0;
+  background: #ffffff;
+  padding: 0.25rem 0;
   margin: 0;
   list-style: none;
-  box-shadow:
-    0 10px 15px -3px rgb(0 0 0 / 0.1),
-    0 4px 6px -4px rgb(0 0 0 / 0.1);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
 }
 
 .cde-combo__menu.hidden {
@@ -287,89 +485,28 @@
 
 .cde-combo__menu li {
   cursor: pointer;
-  padding: 0.3rem 0.6rem;
+  padding: 0.35rem 0.65rem;
   font-size: 11px;
-  color: #262626;
-}
-
-.cde-combo__menu li:hover {
-  background: #f5f5f5;
-}
-
-.cde-combo__menu li[aria-selected='true'] {
-  background: #eff6ff;
-  color: #2563eb;
-  font-weight: 600;
-}
-
-/* Split buttons (icon + caret) — never overflow the control */
-.cde-tb-btn--split {
-  width: auto !important;
-  min-width: 0;
-  height: 1.5rem;
-  max-height: 1.5rem;
-  padding: 0 0.1rem 0 0.15rem !important;
-  gap: 0;
-  overflow: hidden;
+  color: #1f2937;
+  white-space: nowrap;
   box-sizing: border-box;
 }
 
-.cde-tb-btn__face {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 1.05rem;
-  height: 100%;
-  flex-shrink: 0;
-  overflow: hidden;
+.cde-combo__menu li:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
-.cde-tb-btn__glyph {
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
+.cde-combo__menu li[aria-selected='true'],
+.cde-combo__menu li.is-selected {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
-.cde-tb-btn__caret {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 0.65rem;
-  height: 100%;
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-.cde-tb-btn__caret .cde-tb-caret,
-.cde-toolbar .cde-tb-caret {
-  width: 0.55rem !important;
-  height: 0.55rem !important;
-}
-
-.cde-combo.is-open > .cde-tb-btn--split {
-  background: rgb(212 212 212 / 0.95);
-}
-
-/* Color menus (font + highlight) */
-.cde-color-trigger__letter {
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.cde-color-trigger__swatch {
-  position: absolute;
-  left: 0.1rem;
-  right: 0.1rem;
-  bottom: 0.12rem;
-  height: 0.22rem;
-  border-radius: 1px;
-  background: #111827;
-  pointer-events: none;
-}
+/* ==========================================================================
+   Color Menus (Text, Highlight, Cell, Table, Border)
+   ========================================================================== */
 
 .cde-color-menu__panel {
   width: 17rem;
@@ -378,17 +515,16 @@
   padding: 0.7rem;
   border-radius: 0.5rem;
   border: 1px solid #d4d4d4;
-  background: #fff;
-  box-shadow:
-    0 12px 24px -8px rgb(0 0 0 / 0.18),
-    0 4px 10px -4px rgb(0 0 0 / 0.1);
+  background: #ffffff;
+  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.18), 0 4px 10px -4px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
 }
 
 .cde-color-menu__heading {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.45rem;
   font-size: 11px;
   font-weight: 600;
-  color: #525252;
+  color: #4b5563;
 }
 
 .cde-color-menu__grid {
@@ -398,8 +534,9 @@
   justify-content: start;
   padding: 0.35rem;
   border: 1px solid #e5e7eb;
-  border-radius: 0.4rem;
+  border-radius: 0.375rem;
   background: #f8fafc;
+  box-sizing: border-box;
 }
 
 .cde-color-menu--highlight .cde-color-menu__grid {
@@ -411,31 +548,25 @@
   width: 1.35rem;
   height: 1.35rem;
   padding: 0;
-  border: 1px solid rgb(0 0 0 / 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: 0.25rem;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
-  transition:
-    transform 0.08s ease,
-    box-shadow 0.08s ease;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
 
 .cde-color-menu__swatch:hover {
-  transform: scale(1.08);
-  box-shadow:
-    0 0 0 2px #fff,
-    0 0 0 3.5px #2563eb;
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #2563eb;
   z-index: 1;
 }
 
 .cde-color-menu__swatch.is-selected {
-  box-shadow:
-    0 0 0 2px #fff,
-    0 0 0 3.5px #1d4ed8;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #1d4ed8;
 }
 
 .cde-color-menu__swatch--bordered {
-  border-color: #a3a3a3;
+  border-color: #9ca3af;
 }
 
 .cde-color-menu__actions {
@@ -451,28 +582,27 @@
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  padding: 0.4rem 0.45rem;
-  border-radius: 0.35rem;
-  font-size: 12px;
-  color: #262626;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0.25rem;
+  font-size: 11px;
+  color: #1f2937;
   cursor: pointer;
 }
 
 .cde-color-menu__custom:hover,
 .cde-color-menu__clear:hover {
-  background: #f3f4f6;
+  background: #f1f5f9;
 }
 
 .cde-color-menu__native {
   box-sizing: border-box;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.65rem;
+  height: 1.65rem;
   padding: 0;
-  border: 1px solid #c4c4c4;
-  border-radius: 0.3rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.25rem;
   background: #fff;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px #fff;
 }
 
 .cde-color-menu__native::-webkit-color-swatch-wrapper {
@@ -486,27 +616,165 @@
 
 .cde-color-menu__clear {
   width: 100%;
-  padding: 0.4rem 0.45rem;
+  padding: 0.35rem 0.45rem;
   border: 0;
-  border-radius: 0.35rem;
+  border-radius: 0.25rem;
   background: transparent;
   text-align: left;
-  font-size: 12px;
-  color: #262626;
+  font-size: 11px;
+  color: #1f2937;
   cursor: pointer;
 }
 
-.cde-case-menu .cde-combo__menu {
-  min-width: 12rem;
+/* ==========================================================================
+   Table Insert Picker (Grid & Quick Chips)
+   ========================================================================== */
+
+.cde-tablegrid {
+  padding: 0.6rem;
+  background: #ffffff;
+  box-sizing: border-box;
 }
 
+.cde-tablegrid__label {
+  margin: 0 0 0.4rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  text-align: center;
+}
+
+.cde-tablegrid__grid {
+  display: grid;
+  gap: 3px;
+  padding: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.cde-tablegrid__cell {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
+  background: #ffffff;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 0.08s, border-color 0.08s;
+}
+
+.cde-tablegrid__cell:hover,
+.cde-tablegrid__cell.is-on {
+  background: #93c5fd;
+  border-color: #2563eb;
+}
+
+.cde-tablegrid__quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.cde-tb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 10px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.cde-tb-chip:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+/* ==========================================================================
+   Dropdown Menus (.cde-tb-menu)
+   ========================================================================== */
+
+.cde-tb-menu {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cde-tb-menu--list {
+  min-width: 10rem;
+  padding: 0.25rem 0;
+}
+
+.cde-tb-menu--panel {
+  min-width: 14rem;
+}
+
+.cde-tb-menu__heading {
+  margin: 0.4rem 0.5rem 0.2rem;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.cde-tb-menu__item,
+.cde-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 11px;
+  color: #1f2937;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.cde-tb-menu__item:hover,
+.cde-menu-item:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.cde-tb-menu__item.is-active,
 .cde-menu-item.is-selected {
   background: #eff6ff;
   color: #1d4ed8;
   font-weight: 600;
 }
 
-/* Editing — find / replace panel */
+.cde-tb-menu__divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 0.25rem 0;
+}
+
+.cde-tb-menu__footer {
+  border-top: 1px solid #e2e8f0;
+  margin-top: 0.4rem;
+  padding-top: 0.2rem;
+}
+
+/* ==========================================================================
+   Find & Replace Bar (.cde-find-panel)
+   ========================================================================== */
+
 .cde-find-panel {
   position: relative;
   display: flex;
@@ -516,6 +784,7 @@
   padding: 0.45rem 2rem 0.5rem 0.65rem;
   border-top: 1px solid #d1d5db;
   background: #eef2ff;
+  box-sizing: border-box;
 }
 
 .cde-find-panel.hidden {
@@ -536,10 +805,10 @@
   padding: 0 0.5rem;
   border: 1px solid #cbd5e1;
   border-radius: 0.35rem;
-  background: #fff;
+  background: #ffffff;
   font: inherit;
-  font-size: 12px;
-  color: #171717;
+  font-size: 11px;
+  color: #1f2937;
 }
 
 .cde-find-panel__input:focus {
@@ -565,11 +834,12 @@
   padding: 0 0.45rem;
   border: 1px solid #cbd5e1;
   border-radius: 0.3rem;
-  background: #fff;
-  color: #262626;
+  background: #ffffff;
+  color: #1f2937;
   font: inherit;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .cde-find-panel__btn:hover {
@@ -599,18 +869,15 @@
   border-radius: 0.25rem;
   background: transparent;
   color: #64748b;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   line-height: 1;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .cde-find-panel__close:hover {
   background: #e2e8f0;
   color: #0f172a;
-}
-
-@media print {
-  .cde-toolbar {
-    display: none !important;
-  }
 }

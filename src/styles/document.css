@@ -149,7 +149,8 @@
 }
 
 /* TipTap injects .ProseMirror — neutralize default chrome inside the sheet */
-.cde-page-sheet .ProseMirror {
+.cde-page-sheet .ProseMirror,
+.cde-page-sheet__static {
   white-space: pre-wrap;
   position: relative;
 }
@@ -236,11 +237,27 @@
   @apply m-0 mb-[0.75em] pl-[1.5em];
 }
 
+.cde-page-content ul li > p,
+.cde-page-content ol li > p,
+.cde-page-sheet__static ul li > p,
+.cde-page-sheet__static ol li > p,
+.cde-page-sheet .ProseMirror ul li > p,
+.cde-page-sheet .ProseMirror ol li > p {
+  margin: 0 !important;
+}
+
 .cde-page-content table,
-.cde-page-sheet__static table,
-.cde-page-sheet .ProseMirror table,
-.cde-wt__grid {
+.cde-page-sheet__static table:not(.cde-wt__grid),
+.cde-page-sheet .ProseMirror table:not(.cde-wt__grid) {
   @apply border-collapse table-fixed border border-solid border-gray-300 bg-white;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.cde-wt__grid {
+  @apply border-collapse table-fixed;
   margin: 0;
   box-sizing: border-box;
 }
@@ -250,11 +267,18 @@
 .cde-page-sheet__static td,
 .cde-page-sheet__static th,
 .cde-page-sheet .ProseMirror td,
-.cde-page-sheet .ProseMirror th,
-.cde-wt__cell {
+.cde-page-sheet .ProseMirror th {
   @apply border border-solid border-gray-300 py-[0.35em] px-[0.5em] align-top relative min-w-[2em] box-border;
   word-wrap: break-word;
   overflow-wrap: anywhere;
+}
+
+.cde-wt__cell {
+  @apply border border-solid border-gray-300 py-[0.35em] px-[0.5em] align-top relative box-border;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  background-color: #ffffff;
 }
 
 .cde-page-content th,
@@ -302,15 +326,29 @@
 
 .cde-wt__grid {
   display: table;
+  min-width: 0;
+  /* Last resort for pasted or legacy tables wider than the page */
+  max-width: 100%;
 }
 
-.cde-wt__cell {
+.cde-wt__grid col {
+  min-width: 0;
+}
+
+.cde-page-sheet .ProseMirror .cde-wt__cell,
+.cde-page-content .cde-wt__cell,
+.cde-wt .cde-wt__cell {
   outline: none;
   white-space: pre-wrap;
+  min-width: 0;
 }
 
 .cde-wt__cell:focus {
-  box-shadow: inset 0 0 0 2px #3b82f6;
+  box-shadow: inset 0 0 0 1.5px #93c5fd;
+}
+
+.cde-wt__cell:focus:not(:focus-visible) {
+  box-shadow: none;
 }
 
 .cde-wt__cell.is-selected-cell {
@@ -350,8 +388,11 @@
   padding-left: 1.25em;
 }
 
+.cde-page-sheet .ProseMirror .cde-wt__cell p,
+.cde-page-sheet__static .cde-wt__cell p,
+.cde-page-content .cde-wt__cell p,
 .cde-wt__cell p {
-  margin: 0.25em 0;
+  margin: 0 !important;
 }
 
 .cde-wt__handles {
@@ -630,52 +671,594 @@
   padding: 2.54cm;
 }
 
+/* ==========================================================================
+   Print Stylesheet (@media print)
+   Matches the canvas layout 1:1 without UI chrome or margin drift
+   ========================================================================== */
+
+@page {
+  /* Default page rule; dynamically updated by DocumentEditor based on size & orientation */
+  size: letter portrait;
+  margin: 0 !important;
+}
+
 @media print {
+  html,
   body {
-    background: none;
-    padding: 0;
-    margin: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  .cde-workspace {
-    padding: 0;
-    background: none;
-    min-height: auto;
-    display: block;
-  }
-
-  .cde-toolbar {
+  /* Hide all UI chrome, rulers, toolbars, overlays and test panels */
+  .cde-toolbar,
+  .cde-ruler-top-bar,
+  .cde-ruler-h-wrapper,
+  .cde-ruler--horizontal,
+  .cde-ruler-v-wrapper,
+  .cde-ruler--vertical,
+  .cde-ruler-corner,
+  .cde-virtual-sheets,
+  .cde-virtual-sheet__num,
+  .cde-context-menu,
+  .cde-bubble-menu,
+  .cde-page-sheet__num,
+  .cde-wt__chrome,
+  .cde-wt__handles,
+  .cde-wt__col-handle,
+  .cde-wt__row-handle,
+  .cde-wt__margin-handle,
+  .cde-wt__guide,
+  #toggle-panel,
+  div[style*="position: fixed"],
+  div[style*="position:fixed"] {
     display: none !important;
   }
 
-  .cde-page-sheet {
-    box-shadow: none;
-    outline: none !important;
-    break-after: page;
+  .cde-workspace {
+    padding: 0 !important;
     margin: 0 !important;
+    background: transparent !important;
+    min-height: auto !important;
+    width: 100% !important;
+    display: block !important;
+    box-shadow: none !important;
+    outline: none !important;
   }
 
-  .cde-page-sheet__num {
-    display: none;
+  .cde-editor-main-row {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
   }
 
-  .cde-page-sheet.is-active {
-    outline: none;
+  .cde-document-stage {
+    margin: 0 auto !important;
+    padding: 0 !important;
+    display: block !important;
+    box-shadow: none !important;
+    border: none !important;
+    min-height: auto !important;
+    background: transparent !important;
+  }
+
+  .cde-editor-layer,
+  .cde-editor-mount {
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    background: transparent !important;
+  }
+
+  .cde-editor-mount .ProseMirror {
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    outline: none !important;
+  }
+
+  .cde-page-break {
+    background: transparent !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .cde-page-break--list {
+    list-style: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .cde-wt__page-spacer,
+  .cde-wt__page-spacer td {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .cde-wt__repeated-header {
+    opacity: 1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cde-wt {
+    display: block !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .cde-wt__grid {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .cde-wt__grid tr {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
   }
 }
 
-@page {
-  size: letter;
-  margin: 1in;
+/* ??? Single-Instance Google Docs-style Virtual Pagination ??? */
+.cde-document-stage {
+  position: relative;
+  margin: 1.5rem auto 3rem auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-@page cde-a4 {
-  size: A4;
-  margin: 2.54cm;
+
+/* Dual Professional Rulers (Horizontal & Vertical) */
+.cde-ruler-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  background: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-@media print {
-  .cde-page-sheet--a4 {
-    page: cde-a4;
-  }
+.cde-ruler-top-bar.is-hidden {
+  display: none !important;
+}
+
+.cde-ruler-corner {
+  position: absolute;
+  left: calc(50% - var(--ruler-half-width, 408px) - 24px);
+  width: 24px;
+  height: 24px;
+  background: #e2e8f0;
+  border-right: 1px solid #cbd5e1;
+  border-top: none;
+  border-left: none;
+  border-bottom: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  gap: 1px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cde-ruler-corner:hover {
+  background: #cbd5e1;
+  color: #1e293b;
+}
+
+.cde-ruler-corner-unit {
+  font-size: 7.5px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: -0.2px;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+.cde-ruler-h-wrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.cde-ruler--horizontal {
+  position: relative;
+  height: 24px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.cde-editor-main-row {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  position: relative;
+  width: 100%;
+}
+
+.cde-ruler-v-wrapper {
+  position: absolute;
+  left: calc(50% - var(--ruler-half-width, 408px) - 24px);
+  width: 24px;
+  top: 1.5rem;
+  z-index: 14;
+  transition: top 0.08s ease-out;
+}
+
+.cde-ruler-v-wrapper.is-hidden {
+  display: none !important;
+}
+
+.cde-ruler--vertical {
+  position: relative;
+  width: 24px;
+  background: #f8fafc;
+  border-right: 1px solid #cbd5e1;
+  box-sizing: border-box;
+}
+
+.cde-ruler-margin-zone {
+  position: absolute;
+  background: #cbd5e1;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.cde-ruler-margin-zone--left {
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.cde-ruler-margin-zone--right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+}
+
+.cde-ruler-margin-zone--top {
+  left: 0;
+  right: 0;
+  top: 0;
+}
+
+.cde-ruler-margin-zone--bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.cde-ruler-active-zone {
+  position: absolute;
+  background: #ffffff;
+  pointer-events: none;
+}
+
+.cde-ruler-active-zone--h {
+  top: 0;
+  bottom: 0;
+}
+
+.cde-ruler-active-zone--v {
+  left: 0;
+  right: 0;
+}
+
+.cde-ruler-ticks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.cde-ruler-tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  background: #94a3b8;
+}
+
+.cde-ruler-tick--minor {
+  height: 3px;
+}
+
+.cde-ruler-tick--submedium {
+  height: 5px;
+  background: #94a3b8;
+}
+
+.cde-ruler-tick--medium {
+  height: 7px;
+  background: #64748b;
+}
+
+.cde-ruler-tick--major {
+  height: 11px;
+  background: #475569;
+}
+
+.cde-ruler-tick--v {
+  bottom: auto;
+  right: 0;
+  height: 1px;
+  background: #94a3b8;
+}
+
+.cde-ruler-tick--v.cde-ruler-tick--minor {
+  width: 3px;
+  height: 1px;
+}
+
+.cde-ruler-tick--v.cde-ruler-tick--submedium {
+  width: 5px;
+  height: 1px;
+  background: #94a3b8;
+}
+
+.cde-ruler-tick--v.cde-ruler-tick--medium {
+  width: 7px;
+  height: 1px;
+  background: #64748b;
+}
+
+.cde-ruler-tick--v.cde-ruler-tick--major {
+  width: 11px;
+  height: 1px;
+  background: #475569;
+}
+
+.cde-ruler-tick-label {
+  position: absolute;
+  top: -12px;
+  left: -4px;
+  font-size: 9px;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  color: #475569;
+  font-weight: 500;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cde-ruler-tick-label--v {
+  top: -6px;
+  left: -14px;
+}
+
+/* Margin Handles */
+.cde-ruler-handle {
+  position: absolute;
+  z-index: 20;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease;
+}
+
+.cde-ruler-handle.is-locked {
+  cursor: default !important;
+  opacity: 0.4 !important;
+  pointer-events: none !important;
+}
+
+.cde-ruler-handle--left,
+.cde-ruler-handle--right {
+  top: 10px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  cursor: ew-resize;
+}
+
+.cde-ruler-handle--right {
+  margin-right: -7px;
+  margin-left: 0;
+}
+
+.cde-ruler-handle--top,
+.cde-ruler-handle--bottom {
+  left: 10px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  cursor: ns-resize;
+}
+
+.cde-ruler-handle--bottom {
+  margin-bottom: -7px;
+  margin-top: 0;
+}
+
+.cde-ruler-marker-icon--down {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid #2563eb;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
+  transition: border-top-color 0.15s ease, transform 0.15s ease;
+}
+
+.cde-ruler-marker-icon--right {
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid #2563eb;
+  filter: drop-shadow(1px 0 1px rgba(0,0,0,0.2));
+  transition: border-left-color 0.15s ease, transform 0.15s ease;
+}
+
+.cde-ruler-handle:hover .cde-ruler-marker-icon--down {
+  border-top-color: #1d4ed8;
+  transform: scale(1.15);
+}
+
+.cde-ruler-handle:hover .cde-ruler-marker-icon--right {
+  border-left-color: #1d4ed8;
+  transform: scale(1.15);
+}
+
+/* Guidelines and Tooltip */
+.cde-ruler-guideline {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  border: 1px dashed #2563eb;
+}
+
+.cde-ruler-guideline--v {
+  width: 0;
+}
+
+.cde-ruler-guideline--h {
+  height: 0;
+}
+
+.cde-ruler-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 500;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
+  white-space: nowrap;
+}
+
+
+.cde-workspace[data-line-numbers='true'] .cde-editor-mount .ProseMirror { counter-reset: cde-line; }
+.cde-workspace[data-line-numbers='true'] .cde-editor-mount .ProseMirror > * { counter-increment: cde-line; }
+.cde-workspace[data-line-numbers='true'] .cde-editor-mount .ProseMirror > *::before {
+  content: counter(cde-line);
+  display: inline-block;
+  width: 2rem;
+  margin-left: -2.5rem;
+  color: #94a3b8;
+  font: 10px/1.5 ui-sans-serif, system-ui, sans-serif;
+  text-align: right;
+  user-select: none;
+}
+
+.cde-virtual-sheets {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cde-virtual-sheet {
+  position: relative;
+  background: #ffffff;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.cde-virtual-sheet__num {
+  position: absolute;
+  bottom: 24px;
+  right: 32px;
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  user-select: none;
+}
+
+.cde-editor-layer {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  background: transparent !important;
+}
+
+.cde-editor-mount {
+  width: 100%;
+  background: transparent !important;
+}
+
+.cde-editor-mount .ProseMirror {
+  background: transparent !important;
+  outline: none;
+  box-sizing: border-box;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #111827;
+}
+
+.cde-page-break {
+  display: block;
+  width: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  box-sizing: border-box;
+  background: transparent !important;
+}
+
+.cde-page-break--list {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+.cde-wt__page-spacer {
+  border: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+  pointer-events: none !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
+
+.cde-wt__page-spacer td {
+  border: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+  pointer-events: none !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
+
+.cde-wt__repeated-header {
+  user-select: none;
+  pointer-events: none;
+  opacity: 0.95;
 }

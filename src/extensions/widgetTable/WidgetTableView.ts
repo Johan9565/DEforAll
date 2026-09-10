@@ -3,6 +3,8 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Fragment } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { NodeView } from '@tiptap/pm/view';
+import type { PageSize } from '../../types';
+import { measurePageMetrics, type PageMetrics } from '../pageMetrics';
 import {
   cloneAttrs,
   emptyCell,
@@ -18,6 +20,26 @@ export interface WidgetTableViewProps {
   node: ProseMirrorNode;
   editor: Editor;
   getPos: () => number | undefined;
+}
+
+function cleanDomFontStyles(
+  td: HTMLElement,
+  prop: 'fontSize' | 'fontFamily' | 'all',
+): void {
+  td.querySelectorAll('*').forEach((el) => {
+    const h = el as HTMLElement;
+    if (prop === 'fontSize' || prop === 'all') {
+      if (h.style.fontSize) h.style.fontSize = '';
+      if (h.hasAttribute('size')) h.removeAttribute('size');
+    }
+    if (prop === 'fontFamily' || prop === 'all') {
+      if (h.style.fontFamily) h.style.fontFamily = '';
+      if (h.hasAttribute('face')) h.removeAttribute('face');
+    }
+    if (!h.getAttribute('style')?.trim()) {
+      h.removeAttribute('style');
+    }
+  });
 }
 
 /**
@@ -38,6 +60,7 @@ export class WidgetTableView implements NodeView {
   private hasActiveFocus = false;
   private destroyed = false;
   private resizeObserver: ResizeObserver | null = null;
+  private cellInputDebounce: number | null = null;
 
   constructor(props: WidgetTableViewProps) {
     this.node = props.node;
@@ -48,6 +71,7 @@ export class WidgetTableView implements NodeView {
     this.dom = document.createElement('div');
     this.dom.className = 'cde-wt';
     this.dom.dataset.widgetTable = 'true';
+    (this.dom as unknown as { __view: WidgetTableView }).__view = this;
     this.dom.contentEditable = 'false';
 
     this.chrome = this.buildChrome();
@@ -60,14 +84,20 @@ export class WidgetTableView implements NodeView {
     this.dom.append(this.chrome, this.grid, this.handleLayer);
     this.render(this.currentData);
 
-    window.addEventListener('mouseup', () => {
-      this.isSelectingCells = false;
-    });
+    window.addEventListener('mouseup', this.onWindowMouseUp);
+    document.addEventListener('mousedown', this.onDocMouseDown, true);
 
     if (typeof ResizeObserver !== 'undefined') {
+      let resizeTimer = 0;
       this.resizeObserver = new ResizeObserver(() => {
         if (!this.destroyed) {
           this.layoutHandles(this.currentData);
+          window.clearTimeout(resizeTimer);
+          resizeTimer = window.setTimeout(() => {
+            if (!this.destroyed) {
+              this.requestPaginationRefresh();
+            }
+          }, 30);
         }
       });
       this.resizeObserver.observe(this.grid);
@@ -83,14 +113,14 @@ export class WidgetTableView implements NodeView {
     const prevData = this.currentData;
     this.currentData = nextData;
 
-    // If table dimensions changed or not active, re-render
+    // If table dimensions changed, re-render
     const dimChanged =
       nextData.cells.length !== prevData.cells.length ||
       nextData.cells.some((r, i) => r.length !== (prevData.cells[i]?.length ?? 0)) ||
       nextData.colWidths.length !== prevData.colWidths.length ||
       nextData.withHeaderRow !== prevData.withHeaderRow;
 
-    if (!this.hasActiveFocus || dimChanged) {
+    if (dimChanged) {
       const focus = this.focused;
       this.render(nextData);
       if (focus && this.hasActiveFocus) {
@@ -114,11 +144,19 @@ export class WidgetTableView implements NodeView {
     this.dom.dataset.wrap = data.wrap || 'none';
     this.dom.classList.remove('cde-wt--wrap-none', 'cde-wt--wrap-left', 'cde-wt--wrap-right');
     this.dom.classList.add(`cde-wt--wrap-${data.wrap || 'none'}`);
+    if (data.tableId) this.dom.dataset.tableId = data.tableId;
+    else delete this.dom.dataset.tableId;
+    if (data.isContinuation) this.dom.dataset.tableContinuation = "true";
+    else delete this.dom.dataset.tableContinuation;
+    if (data.hasRepeatedHeader) this.dom.dataset.tableRepeatedHeader = "true";
+    else delete this.dom.dataset.tableRepeatedHeader;
     this.grid.style.width = `${width}px`;
     this.grid.style.borderStyle = data.borderStyle || '';
     this.grid.style.borderColor = data.borderColor || '';
     this.grid.style.borderWidth = data.borderWidth != null ? `${data.borderWidth}px` : '';
     this.grid.style.backgroundColor = data.backgroundColor || '';
+    this.grid.style.fontFamily = data.fontFamily || '';
+    this.grid.style.fontSize = data.fontSize || '';
 
     const cols = this.grid.querySelectorAll('col');
     data.colWidths.forEach((w, i) => {
@@ -147,6 +185,14 @@ export class WidgetTableView implements NodeView {
         }
 
         td.style.backgroundColor = cell.backgroundColor || '';
+        td.style.color = cell.color || '';
+        const effFont = cell.fontFamily || data.fontFamily || '';
+        td.style.fontFamily = effFont;
+        const effSize = cell.fontSize || data.fontSize || '';
+        td.style.fontSize = effSize;
+        if (effFont || effSize) {
+          cleanDomFontStyles(td, effFont && effSize ? 'all' : effFont ? 'fontFamily' : 'fontSize');
+        }
         td.style.verticalAlign = cell.verticalAlign;
         td.style.borderStyle = cell.borderStyle || '';
         td.style.borderColor = cell.borderColor || '';
@@ -161,6 +207,7 @@ export class WidgetTableView implements NodeView {
       });
     });
 
+    this.requestPaginationRefresh();
     this.layoutHandles(data);
     this.refreshMoveButtons();
   }
@@ -171,6 +218,7 @@ export class WidgetTableView implements NodeView {
 
   deselectNode(): void {
     this.dom.classList.remove('is-selected');
+    this.clearCellSelection();
   }
 
   stopEvent(event: Event): boolean {
@@ -190,10 +238,45 @@ export class WidgetTableView implements NodeView {
     return true;
   }
 
+  private getPageMetrics(): PageMetrics | null {
+    const ext = this.editor.extensionManager.extensions.find(
+      (e) => e.name === 'pagePagination',
+    );
+    const storage = ext?.storage as { metrics?: PageMetrics | null } | undefined;
+    if (storage?.metrics) return storage.metrics;
+
+    const workspace = this.dom.closest('.cde-workspace') as HTMLElement | null;
+    const pageSize = (workspace?.dataset.pageSize as PageSize) || 'letter';
+    return measurePageMetrics(pageSize);
+  }
+
+  public requestPaginationRefresh(): void {
+    if (this.destroyed) return;
+    try {
+      const ext = this.editor.extensionManager.extensions.find(
+        (e) => e.name === 'pagePagination',
+      );
+      const storage = ext?.storage as { requestRefresh?: () => void } | undefined;
+      storage?.requestRefresh?.();
+    } catch {
+      // ignore
+    }
+  }
+
   destroy(): void {
     this.destroyed = true;
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
+    if (this.cellInputDebounce != null) {
+      window.clearTimeout(this.cellInputDebounce);
+      this.cellInputDebounce = null;
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    window.removeEventListener('mouseup', this.onWindowMouseUp);
+    document.removeEventListener('mousedown', this.onDocMouseDown, true);
+    this.clearCellSelection();
+    this.releaseActiveWidget();
     this.dom.replaceChildren();
   }
 
@@ -235,6 +318,82 @@ export class WidgetTableView implements NodeView {
     dispatch(state.tr.setSelection(NodeSelection.create(state.doc, pos)));
   }
 
+  public applyFontToSelection(
+    fontFamily?: string | null,
+    fontSize?: string | null,
+  ): boolean {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+    const range = sel.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const targetCell = (container instanceof Element
+      ? container
+      : container.parentElement
+    )?.closest('.cde-wt__cell') as HTMLElement | null;
+
+    if (!targetCell || !this.dom.contains(targetCell)) return false;
+
+    const row = Number(targetCell.dataset.row);
+    const col = Number(targetCell.dataset.col);
+    if (!Number.isFinite(row) || !Number.isFinite(col)) return false;
+
+    const span = document.createElement('span');
+    if (fontFamily) span.style.fontFamily = fontFamily;
+    if (fontSize) span.style.fontSize = fontSize;
+
+    try {
+      const contents = range.extractContents();
+      span.appendChild(contents);
+      range.insertNode(span);
+      sel.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(span);
+      sel.addRange(newRange);
+
+      this.onCellInput(row, col, targetCell);
+      this.persistCurrent();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public applyColorToSelection(color: string | null): boolean {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+    const range = sel.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const targetCell = (container instanceof Element
+      ? container
+      : container.parentElement
+    )?.closest('.cde-wt__cell') as HTMLElement | null;
+
+    if (!targetCell || !this.dom.contains(targetCell)) return false;
+
+    const row = Number(targetCell.dataset.row);
+    const col = Number(targetCell.dataset.col);
+    if (!Number.isFinite(row) || !Number.isFinite(col)) return false;
+
+    const span = document.createElement('span');
+    if (color) span.style.color = color;
+
+    try {
+      const contents = range.extractContents();
+      span.appendChild(contents);
+      range.insertNode(span);
+      sel.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(span);
+      sel.addRange(newRange);
+
+      this.onCellInput(row, col, targetCell);
+      this.persistCurrent();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private render(data: WidgetTableAttrs): void {
     const width = tablePixelWidth(data);
     this.dom.style.width = `${width}px`;
@@ -242,11 +401,19 @@ export class WidgetTableView implements NodeView {
     this.dom.dataset.wrap = data.wrap || 'none';
     this.dom.classList.remove('cde-wt--wrap-none', 'cde-wt--wrap-left', 'cde-wt--wrap-right');
     this.dom.classList.add(`cde-wt--wrap-${data.wrap || 'none'}`);
+    if (data.tableId) this.dom.dataset.tableId = data.tableId;
+    else delete this.dom.dataset.tableId;
+    if (data.isContinuation) this.dom.dataset.tableContinuation = "true";
+    else delete this.dom.dataset.tableContinuation;
+    if (data.hasRepeatedHeader) this.dom.dataset.tableRepeatedHeader = "true";
+    else delete this.dom.dataset.tableRepeatedHeader;
     this.grid.style.width = `${width}px`;
     this.grid.style.borderStyle = data.borderStyle || '';
     this.grid.style.borderColor = data.borderColor || '';
     this.grid.style.borderWidth = data.borderWidth != null ? `${data.borderWidth}px` : '';
     this.grid.style.backgroundColor = data.backgroundColor || '';
+    this.grid.style.fontFamily = data.fontFamily || '';
+    this.grid.style.fontSize = data.fontSize || '';
     this.grid.replaceChildren();
 
     const colgroup = document.createElement('colgroup');
@@ -275,6 +442,14 @@ export class WidgetTableView implements NodeView {
         }
         td.innerHTML = cell.contentHtml || '';
         if (cell.backgroundColor) td.style.backgroundColor = cell.backgroundColor;
+        if (cell.color) td.style.color = cell.color;
+        const effFont = cell.fontFamily || data.fontFamily || '';
+        if (effFont) td.style.fontFamily = effFont;
+        const effSize = cell.fontSize || data.fontSize || '';
+        if (effSize) td.style.fontSize = effSize;
+        if (effFont || effSize) {
+          cleanDomFontStyles(td, effFont && effSize ? 'all' : effFont ? 'fontFamily' : 'fontSize');
+        }
         td.style.verticalAlign = cell.verticalAlign;
         if (cell.borderStyle) td.style.borderStyle = cell.borderStyle;
         if (cell.borderColor) td.style.borderColor = cell.borderColor;
@@ -302,48 +477,61 @@ export class WidgetTableView implements NodeView {
     });
     this.grid.appendChild(tbody);
 
+    this.selectedCells = this.selectedCells.filter(
+      ({ row, col }) => col < (data.cells[row]?.length ?? 0),
+    );
+    this.paintCellSelection();
+    this.requestPaginationRefresh();
     this.layoutHandles(data);
     this.refreshMoveButtons();
   }
 
   private layoutHandles(data: WidgetTableAttrs): void {
     this.handleLayer.replaceChildren();
-    if (!this.editor.isEditable || this.destroyed) return;
+    if (!this.editor.isEditable) return;
 
-    const gridWidth = this.grid.offsetWidth || tablePixelWidth(data);
-    const gridHeight = this.grid.offsetHeight;
-    this.handleLayer.style.width = `${gridWidth}px`;
-    this.handleLayer.style.height = `${gridHeight}px`;
+    const gridRect = this.grid.getBoundingClientRect();
+    const domRect = this.dom.getBoundingClientRect();
+    const gridWidth = Math.round(gridRect.width) || tablePixelWidth(data);
+    const gridHeight = Math.round(gridRect.height);
 
-    // Left-most outer border handle (resizes column 0)
-    const leftHandle = document.createElement('div');
-    leftHandle.className = 'cde-wt__col-handle cde-wt__col-handle--left';
-    leftHandle.title = 'Arrastrar para cambiar el ancho de la primera columna';
-    leftHandle.style.left = '0px';
-    leftHandle.style.top = '0px';
-    leftHandle.style.height = `${gridHeight}px`;
-    leftHandle.addEventListener('mousedown', (e) => this.startLeftColResize(e, data));
-    this.handleLayer.appendChild(leftHandle);
+    const rows = Array.from(this.grid.querySelectorAll('tr'));
+    if (rows.length === 0) return;
 
-    const rows = this.grid.querySelectorAll('tbody > tr');
-
-    // Create cell-scoped column & row resize handles for each cell
+    // Per-cell border drag handles
     rows.forEach((tr, r) => {
       let currentVirtualCol = 0;
-      const cells = tr.querySelectorAll('th, td');
-      cells.forEach((td, c) => {
+      const cells = Array.from(tr.querySelectorAll('th, td'));
+      cells.forEach((cellEl, c) => {
+        const cellRect = cellEl.getBoundingClientRect();
+        if (cellRect.width === 0 || cellRect.height === 0) return;
+
+        const cellX = Math.round(cellRect.left - domRect.left);
+        const cellY = Math.round(cellRect.top - domRect.top);
+        const cellW = Math.round(cellRect.width);
+        const cellH = Math.round(cellRect.height);
+        const right = cellX + cellW;
+        const bottom = cellY + cellH;
+
+        // Leftmost border handle of the first cell
+        if (c === 0 && r === 0) {
+          const leftHandle = document.createElement('div');
+          leftHandle.className = 'cde-wt__col-handle';
+          leftHandle.title = 'Arrastrar para cambiar el ancho';
+          leftHandle.style.left = `${cellX}px`;
+          leftHandle.style.top = '0px';
+          leftHandle.style.height = `${gridHeight}px`;
+          leftHandle.addEventListener('mousedown', (e) => this.startLeftColResize(e, data));
+          this.handleLayer.appendChild(leftHandle);
+        }
+
         const cellData = data.cells[r]?.[c];
         const span = cellData?.colspan || 1;
         currentVirtualCol += span;
         const targetColIdx = currentVirtualCol - 1;
 
-        const cellEl = td as HTMLElement;
-        const cellX = cellEl.offsetLeft;
-        const cellY = cellEl.offsetTop;
-        const cellW = cellEl.offsetWidth;
-        const cellH = cellEl.offsetHeight;
-        const right = cellX + cellW;
-        const bottom = cellY + cellH;
+        const rSpan = cellData?.rowspan || 1;
+        const targetRowIdx = r + rSpan - 1;
 
         // Vertical right border handle (scoped strictly to this cell's height and vertical span)
         const colHandle = document.createElement('div');
@@ -365,22 +553,27 @@ export class WidgetTableView implements NodeView {
         rowHandle.style.left = `${cellX}px`;
         rowHandle.style.width = `${cellW}px`;
         rowHandle.addEventListener('mousedown', (e) =>
-          this.startRowResize(e, r, bottom, cellX, cellW, data),
+          this.startRowResize(e, targetRowIdx, bottom, cellX, cellW, data),
         );
         this.handleLayer.appendChild(rowHandle);
       });
     });
 
-    // Spacing / Margin handle on right edge
-    const m = data.marginRight ?? 16;
-    const marginHandle = document.createElement('div');
-    marginHandle.className = 'cde-wt__margin-handle';
-    marginHandle.title = 'Arrastrar para separar tablas. Clic para escribir texto en este espacio.';
-    marginHandle.style.left = `${gridWidth}px`;
-    marginHandle.style.width = `${Math.max(14, m)}px`;
-    marginHandle.style.height = `${gridHeight}px`;
-    marginHandle.addEventListener('mousedown', (e) => this.handleMarginClickOrDrag(e, data));
-    this.handleLayer.appendChild(marginHandle);
+    // Spacing / Margin handle on right edge (strictly bounded within page content width)
+    const canvas = this.canvasWidth();
+    const available = Math.max(0, canvas - gridWidth);
+    const m = Math.min(data.marginRight ?? 16, available);
+
+    if (available > 4) {
+      const marginHandle = document.createElement('div');
+      marginHandle.className = 'cde-wt__margin-handle';
+      marginHandle.title = 'Arrastrar para separar tablas. Clic para escribir texto en este espacio.';
+      marginHandle.style.left = `${gridWidth}px`;
+      marginHandle.style.width = `${Math.min(available, Math.max(14, m))}px`;
+      marginHandle.style.height = `${gridHeight}px`;
+      marginHandle.addEventListener('mousedown', (e) => this.handleMarginClickOrDrag(e, data));
+      this.handleLayer.appendChild(marginHandle);
+    }
   }
 
   private handleMarginClickOrDrag(event: MouseEvent, snapshot: WidgetTableAttrs): void {
@@ -414,7 +607,8 @@ export class WidgetTableView implements NodeView {
       }
 
       if (hasDragged && guide) {
-        current = Math.max(0, Math.min(500, Math.round(startM + deltaX)));
+        const maxMargin = Math.max(0, this.canvasWidth() - gridW);
+        current = Math.max(0, Math.min(maxMargin, Math.round(startM + deltaX)));
         this.dom.style.marginRight = `${current}px`;
         guide.style.left = `${gridW + current}px`;
       }
@@ -465,6 +659,7 @@ export class WidgetTableView implements NodeView {
     event.preventDefault();
     event.stopPropagation();
     snapshot = this.readCellsFromDom();
+    this.clearCellSelection();
     this.selectThisNode();
 
     const startX = event.clientX;
@@ -491,7 +686,9 @@ export class WidgetTableView implements NodeView {
         (sum, w, i) => (i === 0 ? sum : sum + w),
         0,
       );
-      const max = Math.max(MIN_COL_WIDTH, canvas - others);
+      const isWrapped = snapshot.wrap === 'left' || snapshot.wrap === 'right';
+      const m = isWrapped ? (snapshot.marginRight ?? 16) : 0;
+      const max = Math.max(MIN_COL_WIDTH, canvas - others - m);
       current = Math.max(MIN_COL_WIDTH, Math.min(max, Math.round(startW - deltaX)));
       const colEl = cols[0] as HTMLElement | undefined;
       if (colEl) colEl.style.width = `${current}px`;
@@ -499,6 +696,7 @@ export class WidgetTableView implements NodeView {
       const total = widths.reduce((s, w) => s + w, 0);
       this.grid.style.width = `${total}px`;
       this.dom.style.width = `${total}px`;
+      guide.style.left = `${startW - current}px`;
       badge.textContent = `${current} px`;
     };
 
@@ -508,8 +706,12 @@ export class WidgetTableView implements NodeView {
       guide.remove();
       const next = cloneAttrs(snapshot);
       next.colWidths[0] = current;
+      next.cells.forEach((row) => {
+        if (row[0]) delete row[0].width;
+      });
       this.persist(next);
       this.layoutHandles(next);
+      this.requestPaginationRefresh();
     };
 
     window.addEventListener('mousemove', onMove);
@@ -528,11 +730,13 @@ export class WidgetTableView implements NodeView {
     event.preventDefault();
     event.stopPropagation();
     snapshot = this.readCellsFromDom();
+    this.clearCellSelection();
     this.selectThisNode();
 
     const startX = event.clientX;
     const startW = snapshot.colWidths[colIndex] ?? MIN_COL_WIDTH;
     const canvas = this.canvasWidth();
+    const cols = this.grid.querySelectorAll('col');
     let current = startW;
 
     const guide = document.createElement('div');
@@ -543,29 +747,31 @@ export class WidgetTableView implements NodeView {
 
     const badge = document.createElement('div');
     badge.className = 'cde-wt__guide-badge';
-    badge.textContent = `${current} px`;
+    badge.textContent = `${startW} px`;
     guide.appendChild(badge);
     this.dom.appendChild(guide);
 
     const onMove = (e: MouseEvent): void => {
-      const deltaX = e.clientX - startX;
+      const deltaX = Math.round(e.clientX - startX);
       const others = snapshot.colWidths.reduce(
         (sum, w, i) => (i === colIndex ? sum : sum + w),
         0,
       );
-      const max = Math.max(MIN_COL_WIDTH, canvas - others);
-      current = Math.max(MIN_COL_WIDTH, Math.min(max, Math.round(startW + deltaX)));
+      const isWrapped = snapshot.wrap === 'left' || snapshot.wrap === 'right';
+      const m = isWrapped ? (snapshot.marginRight ?? 16) : 0;
+      const max = Math.max(MIN_COL_WIDTH, canvas - others - m);
+      current = Math.max(MIN_COL_WIDTH, Math.min(max, startW + deltaX));
 
-      guide.style.left = `${initialRight + deltaX}px`;
-      badge.textContent = `${current} px`;
-
-      const cols = this.grid.querySelectorAll('col');
       const colEl = cols[colIndex] as HTMLElement | undefined;
       if (colEl) colEl.style.width = `${current}px`;
+
       const widths = snapshot.colWidths.map((w, i) => (i === colIndex ? current : w));
       const total = widths.reduce((s, w) => s + w, 0);
       this.grid.style.width = `${total}px`;
       this.dom.style.width = `${total}px`;
+
+      guide.style.left = `${initialRight + (current - startW)}px`;
+      badge.textContent = `${current} px`;
     };
 
     const onUp = (): void => {
@@ -574,8 +780,13 @@ export class WidgetTableView implements NodeView {
       guide.remove();
       const next = cloneAttrs(snapshot);
       next.colWidths[colIndex] = current;
+      next.cells.forEach((row) => {
+        const cell = row[colIndex];
+        if (cell) delete cell.width;
+      });
       this.persist(next);
       this.layoutHandles(next);
+      this.requestPaginationRefresh();
     };
 
     window.addEventListener('mousemove', onMove);
@@ -594,6 +805,7 @@ export class WidgetTableView implements NodeView {
     event.preventDefault();
     event.stopPropagation();
     snapshot = this.readCellsFromDom();
+    this.clearCellSelection();
     this.selectThisNode();
 
     const tr = this.grid.querySelectorAll('tr')[row] as HTMLTableRowElement | undefined;
@@ -618,9 +830,9 @@ export class WidgetTableView implements NodeView {
     tr.classList.add('is-resizing');
 
     const onMove = (e: MouseEvent): void => {
-      const deltaY = e.clientY - startY;
-      current = Math.max(MIN_ROW_HEIGHT, Math.round(startH + deltaY));
-      guide.style.top = `${initialBottom + deltaY}px`;
+      const deltaY = Math.round(e.clientY - startY);
+      current = Math.max(MIN_ROW_HEIGHT, startH + deltaY);
+      guide.style.top = `${initialBottom + (current - startH)}px`;
       badge.textContent = `${current} px`;
 
       tr.style.height = `${current}px`;
@@ -636,8 +848,12 @@ export class WidgetTableView implements NodeView {
       tr.classList.remove('is-resizing');
       const next = cloneAttrs(snapshot);
       next.rowHeights[row] = current;
+      next.cells[row]?.forEach((cell) => {
+        delete cell.height;
+      });
       this.persist(next);
       this.layoutHandles(next);
+      this.requestPaginationRefresh();
     };
 
     window.addEventListener('mousemove', onMove);
@@ -645,13 +861,45 @@ export class WidgetTableView implements NodeView {
   }
 
   private canvasWidth(): number {
+    const metrics = this.getPageMetrics();
+    if (metrics?.bodyWidthPx) {
+      return metrics.bodyWidthPx;
+    }
     const pm = this.editor.view.dom as HTMLElement;
-    return pm.clientWidth || 600;
+    if (!pm) return 624;
+    const style = window.getComputedStyle(pm);
+    const padLeft = parseFloat(style.paddingLeft) || 0;
+    const padRight = parseFloat(style.paddingRight) || 0;
+    return Math.max(100, Math.floor(pm.clientWidth - padLeft - padRight));
   }
 
   private isSelectingCells = false;
   private selectionAnchor: { row: number; col: number } | null = null;
   private selectedCells: Array<{ row: number; col: number }> = [];
+
+  private readonly onWindowMouseUp = (): void => {
+    this.isSelectingCells = false;
+  };
+
+  private readonly onDocMouseDown = (event: MouseEvent): void => {
+    const target = event.target;
+    if (!(target instanceof Node) || this.dom.contains(target)) return;
+    // The ribbon and the context menu operate on the table being edited.
+    const el = target instanceof Element ? target : target.parentElement;
+    if (el?.closest('.cde-toolbar, .cde-ctx-menu')) return;
+    this.clearCellSelection();
+    this.releaseActiveWidget();
+    this.dom.classList.remove('is-selected');
+  };
+
+  private releaseActiveWidget(): void {
+    const storage = this.editor.storage as {
+      table?: { activeWidget?: WidgetTableView | null };
+    };
+    if (storage.table?.activeWidget === this) {
+      storage.table.activeWidget = null;
+    }
+  }
 
   private onCellMouseDown(e: MouseEvent, r: number, c: number): void {
     if (e.button !== 0) return;
@@ -663,13 +911,15 @@ export class WidgetTableView implements NodeView {
 
     this.isSelectingCells = true;
     this.selectionAnchor = { row: r, col: c };
-    this.selectCellRange(r, c, r, c);
+    // A single click is editing, not a sticky selection highlight.
+    this.clearCellSelection();
   }
 
   private onCellMouseEnter(r: number, c: number): void {
-    if (this.isSelectingCells && this.selectionAnchor) {
-      this.selectCellRange(this.selectionAnchor.row, this.selectionAnchor.col, r, c);
-    }
+    if (!this.isSelectingCells || !this.selectionAnchor) return;
+    const a = this.selectionAnchor;
+    if (a.row === r && a.col === c && this.selectedCells.length <= 1) return;
+    this.selectCellRange(a.row, a.col, r, c);
   }
 
   public clearCellSelection(): void {
@@ -691,28 +941,53 @@ export class WidgetTableView implements NodeView {
     const minC = Math.min(c1, c2);
     const maxC = Math.max(c1, c2);
 
-    this.grid.querySelectorAll('.is-selected-cell').forEach((el) => {
-      el.classList.remove('is-selected-cell');
-    });
-
+    // Only cells that exist: merged rows are shorter than the column count.
     const cells: Array<{ row: number; col: number }> = [];
     for (let r = minR; r <= maxR; r += 1) {
+      const row = this.currentData.cells[r];
+      if (!row) continue;
       for (let c = minC; c <= maxC; c += 1) {
-        cells.push({ row: r, col: c });
-        const el = this.grid.querySelector(`.cde-wt__cell[data-row="${r}"][data-col="${c}"]`);
-        if (el) {
-          el.classList.add('is-selected-cell');
-        }
+        if (c < row.length) cells.push({ row: r, col: c });
       }
     }
 
-    this.selectedCells = cells;
+    this.selectedCells = cells.length > 1 ? cells : [];
+    this.paintCellSelection();
+
     const storage = this.editor.storage as {
       table?: { row: number; col: number; selectedCells?: Array<{ row: number; col: number }>; activeWidget?: WidgetTableView };
     };
     if (storage.table) {
-      storage.table.selectedCells = [...cells];
+      storage.table.selectedCells = [...this.selectedCells];
     }
+  }
+
+  /** Mirror `selectedCells` onto the DOM; also used after a re-render. */
+  private paintCellSelection(): void {
+    this.grid.querySelectorAll('.is-selected-cell').forEach((el) => {
+      el.classList.remove('is-selected-cell');
+    });
+    if (this.selectedCells.length <= 1) return;
+    for (const { row, col } of this.selectedCells) {
+      this.grid
+        .querySelector(`.cde-wt__cell[data-row="${row}"][data-col="${col}"]`)
+        ?.classList.add('is-selected-cell');
+    }
+  }
+
+  /**
+   * Cells the user sees highlighted. Commands use this instead of the shared
+   * storage so a re-render or a focus hand-off cannot silently shrink it.
+   */
+  public getSelection(): Array<{ row: number; col: number }> {
+    const fromDom: Array<{ row: number; col: number }> = [];
+    this.grid.querySelectorAll('.cde-wt__cell.is-selected-cell').forEach((el) => {
+      const row = Number((el as HTMLElement).dataset.row);
+      const col = Number((el as HTMLElement).dataset.col);
+      if (Number.isFinite(row) && Number.isFinite(col)) fromDom.push({ row, col });
+    });
+    if (fromDom.length > 1) return fromDom;
+    return this.selectedCells.length > 1 ? [...this.selectedCells] : [];
   }
 
   private onCellFocus(row: number, col: number): void {
@@ -733,6 +1008,15 @@ export class WidgetTableView implements NodeView {
     if (this.currentData.cells[row]?.[col]) {
       this.currentData.cells[row]![col]!.contentHtml = td.innerHTML;
     }
+    if (this.cellInputDebounce != null) {
+      window.clearTimeout(this.cellInputDebounce);
+    }
+    this.cellInputDebounce = window.setTimeout(() => {
+      this.cellInputDebounce = null;
+      if (!this.destroyed) {
+        this.persistCurrent();
+      }
+    }, 250);
   }
 
   private onCellPaste(
@@ -784,6 +1068,10 @@ export class WidgetTableView implements NodeView {
   }
 
   private onCellBlur(): void {
+    if (this.cellInputDebounce != null) {
+      window.clearTimeout(this.cellInputDebounce);
+      this.cellInputDebounce = null;
+    }
     let data = this.readCellsFromDom();
     const hasFormula = data.cells.some((r) => r.some((c) => c.contentHtml.replace(/<[^>]+>/g, '').trim().startsWith('=')));
     if (hasFormula) {
@@ -793,6 +1081,9 @@ export class WidgetTableView implements NodeView {
     }
     this.hasActiveFocus = false;
     this.persist(data);
+    // The cell selection is deliberately kept: losing focus to the ribbon, the
+    // context menu or `chain().focus()` must not shrink what a command sees.
+    // onDocMouseDown clears it when the user really clicks outside the table.
   }
 
   private onCellKeyDown(
@@ -823,8 +1114,9 @@ export class WidgetTableView implements NodeView {
 
     if (event.key === 'Escape') {
       event.preventDefault();
+      this.clearCellSelection();
+      this.dom.classList.remove('is-selected');
       (event.target as HTMLElement).blur();
-      this.selectThisNode();
       this.editor.view.focus();
       return;
     }
@@ -942,6 +1234,7 @@ export class WidgetTableView implements NodeView {
   }
 
   private moveByBlock(direction: 'up' | 'down'): void {
+    this.clearCellSelection();
     this.persist(this.readCellsFromDom());
     const info = this.blockInfo();
     if (!info) return;

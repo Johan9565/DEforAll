@@ -16,6 +16,9 @@ export interface WidgetCell {
   borderStyle?: string | null;
   borderColor?: string | null;
   borderWidth?: number | null;
+  color?: string | null;
+  fontFamily?: string | null;
+  fontSize?: string | null;
 }
 
 export interface WidgetTableAttrs {
@@ -29,6 +32,18 @@ export interface WidgetTableAttrs {
   borderColor?: string | null;
   borderWidth?: number | null;
   backgroundColor?: string | null;
+  /** Id of the applied gallery preset (see TABLE_STYLE_PRESETS). */
+  styleId?: string | null;
+  /** Alternating row shading for the applied preset. */
+  banded?: boolean;
+  /** Stable identity shared by page continuations of the same table. */
+  tableId?: string | null;
+  /** True when this table slice continues from a preceding page. */
+  isContinuation?: boolean;
+  /** True when row 0 was duplicated as a repeating header across the page split. */
+  hasRepeatedHeader?: boolean;
+  fontFamily?: string | null;
+  fontSize?: string | null;
 }
 
 export function emptyCell(): WidgetCell {
@@ -38,6 +53,9 @@ export function emptyCell(): WidgetCell {
     verticalAlign: 'top',
     rowspan: 1,
     colspan: 1,
+    color: null,
+    fontFamily: null,
+    fontSize: null,
   };
 }
 
@@ -45,16 +63,27 @@ export function createWidgetTableAttrs(
   rows = 3,
   cols = 3,
   withHeaderRow = true,
-  wrap: TableWrap = 'left',
+  wrap: TableWrap = 'none',
   marginRight = 16,
+  targetWidth?: number,
 ): WidgetTableAttrs {
   const r = Math.max(1, rows);
   const c = Math.max(1, cols);
+  const totalW = targetWidth && targetWidth > 0 ? targetWidth : 624;
+  const colW = Math.max(MIN_COL_WIDTH, Math.floor(totalW / c));
+  const remainder = totalW - (colW * c);
+  const colWidths = Array.from({ length: c }, (_, i) => (i === c - 1 ? colW + remainder : colW));
+
   return {
     withHeaderRow,
     wrap,
     marginRight,
-    colWidths: Array.from({ length: c }, () => DEFAULT_COL_WIDTH),
+    styleId: null,
+    banded: true,
+    tableId: `tbl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    isContinuation: false,
+    hasRepeatedHeader: false,
+    colWidths,
     rowHeights: Array.from({ length: r }, () => null),
     cells: Array.from({ length: r }, () =>
       Array.from({ length: c }, () => emptyCell()),
@@ -97,6 +126,9 @@ export function normalizeAttrs(raw: Partial<WidgetTableAttrs> | null | undefined
         borderStyle: cell?.borderStyle ?? null,
         borderColor: cell?.borderColor ?? null,
         borderWidth: typeof cell?.borderWidth === 'number' ? cell.borderWidth : null,
+        color: cell?.color ?? null,
+        fontFamily: cell?.fontFamily ?? null,
+        fontSize: cell?.fontSize ?? null,
       });
     }
     cells.push(row);
@@ -138,6 +170,13 @@ export function normalizeAttrs(raw: Partial<WidgetTableAttrs> | null | undefined
     borderColor: raw.borderColor ?? null,
     borderWidth: typeof raw.borderWidth === 'number' ? raw.borderWidth : null,
     backgroundColor: raw.backgroundColor ?? null,
+    styleId: raw.styleId ?? null,
+    banded: raw.banded !== false,
+    tableId: raw.tableId ?? null,
+    isContinuation: Boolean(raw.isContinuation),
+    hasRepeatedHeader: Boolean(raw.hasRepeatedHeader),
+    fontFamily: typeof raw.fontFamily === 'string' ? raw.fontFamily : null,
+    fontSize: typeof raw.fontSize === 'string' ? raw.fontSize : null,
   };
 }
 
@@ -150,6 +189,13 @@ export function cloneAttrs(attrs: WidgetTableAttrs): WidgetTableAttrs {
     borderColor: attrs.borderColor ?? null,
     borderWidth: attrs.borderWidth ?? null,
     backgroundColor: attrs.backgroundColor ?? null,
+    styleId: attrs.styleId ?? null,
+    banded: attrs.banded !== false,
+    tableId: attrs.tableId ?? null,
+    isContinuation: Boolean(attrs.isContinuation),
+    hasRepeatedHeader: Boolean(attrs.hasRepeatedHeader),
+    fontFamily: attrs.fontFamily ?? null,
+    fontSize: attrs.fontSize ?? null,
     colWidths: [...attrs.colWidths],
     rowHeights: [...attrs.rowHeights],
     cells: attrs.cells.map((row) => row.map((c) => ({ ...c }))),
@@ -182,6 +228,39 @@ function nodeToHtml(node: { type?: string; text?: string; marks?: Array<{ type: 
     return inner || '';
   }
   return inner;
+}
+
+/**
+ * Strips conflicting child inline font styles (font-size and/or font-family) from cell HTML
+ * so that cell-level or table-level styling can take effect on all text inside the cell.
+ */
+export function cleanCellFontStyles(
+  html: string,
+  prop: 'fontSize' | 'fontFamily' | 'all' = 'all',
+): string {
+  if (!html || (!html.includes('font-size') && !html.includes('font-family') && !html.includes('face') && !html.includes('size'))) {
+    return html;
+  }
+  if (typeof document !== 'undefined') {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    div.querySelectorAll('*').forEach((el) => {
+      const h = el as HTMLElement;
+      if (prop === 'fontSize' || prop === 'all') {
+        if (h.style.fontSize) h.style.fontSize = '';
+        if (h.hasAttribute('size')) h.removeAttribute('size');
+      }
+      if (prop === 'fontFamily' || prop === 'all') {
+        if (h.style.fontFamily) h.style.fontFamily = '';
+        if (h.hasAttribute('face')) h.removeAttribute('face');
+      }
+      if (!h.getAttribute('style')?.trim()) {
+        h.removeAttribute('style');
+      }
+    });
+    return div.innerHTML;
+  }
+  return html;
 }
 
 /**
@@ -250,6 +329,9 @@ export function parseTableElement(el: HTMLElement): WidgetTableAttrs {
         borderStyle: htmlEl.style.borderStyle || null,
         borderColor: htmlEl.style.borderColor || null,
         borderWidth: htmlEl.style.borderWidth ? parseInt(htmlEl.style.borderWidth, 10) : null,
+        color: htmlEl.style.color || null,
+        fontFamily: (htmlEl.style.fontFamily || htmlEl.dataset.fontFamily || "").replace(/['"]+/g, "") || null,
+        fontSize: htmlEl.style.fontSize || htmlEl.dataset.fontSize || null,
       };
     }),
   );
@@ -263,7 +345,8 @@ export function parseTableElement(el: HTMLElement): WidgetTableAttrs {
     const w = col ? parseInt(col.style.width || col.getAttribute('width') || '', 10) : NaN;
     if (Number.isFinite(w) && w >= MIN_COL_WIDTH) return w;
     const first = rows[0]?.querySelectorAll('th, td')[i] as HTMLElement | undefined;
-    const cw = first?.getBoundingClientRect().width ?? DEFAULT_COL_WIDTH;
+    const measuredWidth = first ? first.getBoundingClientRect().width : 0;
+    const cw = measuredWidth > 0 ? measuredWidth : DEFAULT_COL_WIDTH;
     return Math.max(MIN_COL_WIDTH, Math.round(cw));
   });
 
@@ -287,6 +370,13 @@ export function parseTableElement(el: HTMLElement): WidgetTableAttrs {
     borderColor: table.style.borderColor || null,
     borderWidth: table.style.borderWidth ? parseInt(table.style.borderWidth, 10) : null,
     backgroundColor: table.style.backgroundColor || null,
+    styleId: el.dataset.tableStyle || null,
+    banded: el.dataset.banded !== 'false',
+    tableId: el.dataset.tableId || el.getAttribute('data-table-id') || null,
+    isContinuation: el.dataset.tableContinuation === 'true' || el.getAttribute('data-table-continuation') === 'true',
+    hasRepeatedHeader: el.dataset.tableRepeatedHeader === 'true' || el.getAttribute('data-table-repeated-header') === 'true',
+    fontFamily: (table.style.fontFamily || el.dataset.fontFamily || el.getAttribute('data-font-family') || '').replace(/['"]+/g, '') || null,
+    fontSize: table.style.fontSize || el.dataset.fontSize || el.getAttribute('data-font-size') || null,
   });
 }
 
@@ -310,6 +400,8 @@ export function attrsToHtml(attrs: WidgetTableAttrs): string {
   if (data.borderColor) tableStyles.push(`border-color:${data.borderColor}`);
   if (data.borderWidth != null) tableStyles.push(`border-width:${data.borderWidth}px`);
   if (data.backgroundColor) tableStyles.push(`background-color:${data.backgroundColor}`);
+  if (data.fontFamily) tableStyles.push(`font-family:${data.fontFamily}`);
+  if (data.fontSize) tableStyles.push(`font-size:${data.fontSize}`);
 
   const body = data.cells
     .map((row, r) => {
@@ -327,6 +419,9 @@ export function attrsToHtml(attrs: WidgetTableAttrs): string {
           if (cell.borderStyle) style.push(`border-style:${cell.borderStyle}`);
           if (cell.borderColor) style.push(`border-color:${cell.borderColor}`);
           if (cell.borderWidth != null) style.push(`border-width:${cell.borderWidth}px`);
+          if (cell.color) style.push(`color:${cell.color}`);
+          if (cell.fontFamily) style.push(`font-family:${cell.fontFamily}`);
+          if (cell.fontSize) style.push(`font-size:${cell.fontSize}`);
           const styleAttr = style.length ? ` style="${style.join(';')}"` : '';
           const spanAttrs: string[] = [];
           if (cell.rowspan && cell.rowspan > 1) spanAttrs.push(`rowspan="${cell.rowspan}"`);
@@ -340,7 +435,17 @@ export function attrsToHtml(attrs: WidgetTableAttrs): string {
     })
     .join('');
 
-  return `<div class="cde-wt cde-wt--wrap-${data.wrap}" data-widget-table="true" data-wrap="${data.wrap}" style="width:${width}px;margin-right:${data.marginRight ?? 16}px"><table class="cde-wt__grid" style="${tableStyles.join(';')}"><colgroup>${cols}</colgroup><tbody>${body}</tbody></table></div>`;
+  const styleAttrs = [
+    data.styleId ? ` data-table-style="${data.styleId}"` : '',
+    data.banded === false ? ' data-banded="false"' : '',
+    data.tableId ? ` data-table-id="${escapeHtml(data.tableId)}"` : '',
+    data.isContinuation ? ' data-table-continuation="true"' : '',
+    data.hasRepeatedHeader ? ' data-table-repeated-header="true"' : '',
+    data.fontFamily ? ` data-font-family="${escapeHtml(data.fontFamily)}"` : '',
+    data.fontSize ? ` data-font-size="${escapeHtml(data.fontSize)}"` : '',
+  ].join('');
+
+  return `<div class="cde-wt cde-wt--wrap-${data.wrap}" data-widget-table="true" data-wrap="${data.wrap}"${styleAttrs} style="width:${width}px;margin-right:${data.marginRight ?? 16}px"><table class="cde-wt__grid" style="${tableStyles.join(';')}"><colgroup>${cols}</colgroup><tbody>${body}</tbody></table></div>`;
 }
 
 export function splitAttrsAtRow(
@@ -352,6 +457,8 @@ export function splitAttrsAtRow(
   if (splitIndex <= 0) return { first: null, second: data };
   if (splitIndex >= data.cells.length) return { first: data, second: null };
 
+  const tableId = data.tableId ?? `table-continuation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   const first: WidgetTableAttrs = {
     withHeaderRow: data.withHeaderRow,
     wrap: data.wrap,
@@ -360,6 +467,13 @@ export function splitAttrsAtRow(
     borderColor: data.borderColor,
     borderWidth: data.borderWidth,
     backgroundColor: data.backgroundColor,
+    styleId: data.styleId,
+    banded: data.banded,
+    tableId,
+    isContinuation: data.isContinuation,
+    hasRepeatedHeader: data.hasRepeatedHeader,
+    fontFamily: data.fontFamily,
+    fontSize: data.fontSize,
     colWidths: [...data.colWidths],
     rowHeights: data.rowHeights.slice(0, splitIndex),
     cells: data.cells.slice(0, splitIndex).map((row) => row.map((c) => ({ ...c }))),
@@ -377,11 +491,60 @@ export function splitAttrsAtRow(
     borderColor: data.borderColor,
     borderWidth: data.borderWidth,
     backgroundColor: data.backgroundColor,
+    styleId: data.styleId,
+    banded: data.banded,
+    tableId,
+    isContinuation: true,
+    hasRepeatedHeader: shouldRepeatHeader,
+    fontFamily: data.fontFamily,
+    fontSize: data.fontSize,
     colWidths: [...data.colWidths],
     rowHeights: [...headerHeights, ...data.rowHeights.slice(splitIndex)],
     cells: [...headerCells, ...data.cells.slice(splitIndex).map((row) => row.map((c) => ({ ...c })))],
   };
   return { first, second };
+}
+
+export function canJoinTables(
+  aAttrs: Partial<WidgetTableAttrs> | null | undefined,
+  bAttrs: Partial<WidgetTableAttrs> | null | undefined,
+): boolean {
+  if (!aAttrs || !bAttrs) return false;
+  // If both have the same tableId, they belong to the exact same logical table
+  if (aAttrs.tableId && bAttrs.tableId && aAttrs.tableId === bAttrs.tableId) {
+    return true;
+  }
+  // If b is marked as continuation and column counts match
+  if (bAttrs.isContinuation && aAttrs.colWidths && bAttrs.colWidths && aAttrs.colWidths.length === bAttrs.colWidths.length) {
+    return true;
+  }
+  return false;
+}
+
+export function joinTableAttrs(
+  first: WidgetTableAttrs,
+  second: WidgetTableAttrs,
+): WidgetTableAttrs {
+  const a = normalizeAttrs(first);
+  const b = normalizeAttrs(second);
+
+  // If the second table has a repeated header row, strip it so it doesn't duplicate in the joined table
+  const hasDupHeader = Boolean(b.hasRepeatedHeader) && b.cells.length > 1;
+  const secondCells = hasDupHeader ? b.cells.slice(1) : b.cells;
+  const secondRowHeights = hasDupHeader ? b.rowHeights.slice(1) : b.rowHeights;
+
+  return {
+    ...a,
+    tableId: a.tableId || b.tableId,
+    isContinuation: a.isContinuation,
+    hasRepeatedHeader: a.hasRepeatedHeader,
+    colWidths: a.colWidths.length >= b.colWidths.length ? [...a.colWidths] : [...b.colWidths],
+    rowHeights: [...a.rowHeights, ...secondRowHeights],
+    cells: [
+      ...a.cells.map((row) => row.map((c) => ({ ...c }))),
+      ...secondCells.map((row) => row.map((c) => ({ ...c }))),
+    ],
+  };
 }
 
 export function evaluateTableFormulas(attrs: WidgetTableAttrs): WidgetTableAttrs {
@@ -405,82 +568,94 @@ export function evaluateTableFormulas(attrs: WidgetTableAttrs): WidgetTableAttrs
 
       const fn = match[1]!.toUpperCase();
       const dir = match[2]!.toUpperCase();
+      const values: number[] = [];
 
-      const numbers: number[] = [];
       if (dir === 'ABOVE') {
         for (let i = 0; i < r; i += 1) {
-          const val = extractNumber(next.cells[i]?.[c]?.contentHtml || '');
-          if (val !== null) numbers.push(val);
-        }
-      } else if (dir === 'LEFT') {
-        for (let j = 0; j < c; j += 1) {
-          const val = extractNumber(row[j]?.contentHtml || '');
-          if (val !== null) numbers.push(val);
+          const v = extractNumber(next.cells[i]![c]?.contentHtml ?? '');
+          if (v != null) values.push(v);
         }
       } else if (dir === 'BELOW') {
         for (let i = r + 1; i < rows; i += 1) {
-          const val = extractNumber(next.cells[i]?.[c]?.contentHtml || '');
-          if (val !== null) numbers.push(val);
+          const v = extractNumber(next.cells[i]![c]?.contentHtml ?? '');
+          if (v != null) values.push(v);
+        }
+      } else if (dir === 'LEFT') {
+        for (let j = 0; j < c; j += 1) {
+          const v = extractNumber(row[j]?.contentHtml ?? '');
+          if (v != null) values.push(v);
         }
       } else if (dir === 'RIGHT') {
         for (let j = c + 1; j < row.length; j += 1) {
-          const val = extractNumber(row[j]?.contentHtml || '');
-          if (val !== null) numbers.push(val);
+          const v = extractNumber(row[j]?.contentHtml ?? '');
+          if (v != null) values.push(v);
         }
       }
+
+      if (values.length === 0) continue;
 
       let res = 0;
-      if (numbers.length > 0) {
-        if (fn === 'SUM') {
-          res = numbers.reduce((a, b) => a + b, 0);
-        } else if (fn === 'AVERAGE') {
-          res = numbers.reduce((a, b) => a + b, 0) / numbers.length;
-        } else if (fn === 'COUNT') {
-          res = numbers.length;
-        } else if (fn === 'PRODUCT') {
-          res = numbers.reduce((a, b) => a * b, 1);
-        } else if (fn === 'MIN') {
-          res = Math.min(...numbers);
-        } else if (fn === 'MAX') {
-          res = Math.max(...numbers);
-        }
-      }
+      if (fn === 'SUM') res = values.reduce((s, v) => s + v, 0);
+      else if (fn === 'AVERAGE') res = values.reduce((s, v) => s + v, 0) / values.length;
+      else if (fn === 'COUNT') res = values.length;
+      else if (fn === 'PRODUCT') res = values.reduce((s, v) => s * v, 1);
+      else if (fn === 'MIN') res = Math.min(...values);
+      else if (fn === 'MAX') res = Math.max(...values);
 
-      cell.contentHtml = String(Math.round(res * 100) / 100);
+      const formatted = Number.isInteger(res) ? String(res) : res.toFixed(2);
+      next.cells[r]![c] = {
+        ...cell,
+        contentHtml: formatted,
+      };
     }
   }
-
   return next;
 }
 
-export function autoFitColWidths(attrs: WidgetTableAttrs, targetWidth = 600): WidgetTableAttrs {
+export function autoFitColWidths(attrs: WidgetTableAttrs, targetWidth?: number): WidgetTableAttrs {
   const next = cloneAttrs(attrs);
   const numCols = next.colWidths.length;
-  if (numCols === 0) return next;
-
-  const minTokens = Array.from({ length: numCols }, () => 20);
-  const maxTokens = Array.from({ length: numCols }, () => 40);
+  const maxTokens = Array.from({ length: numCols }, () => 0);
 
   next.cells.forEach((row) => {
     row.forEach((cell, c) => {
       if (c >= numCols) return;
-      const plain = cell.contentHtml.replace(/<[^>]+>/g, '').trim();
-      if (!plain) return;
-      const words = plain.split(/\s+/);
-      const longestWord = words.reduce((m, w) => Math.max(m, w.length), 0);
-      const cellMin = longestWord * 8.5 + 20;
-      const cellMax = plain.length * 8.0 + 20;
-      minTokens[c] = Math.max(minTokens[c]!, cellMin);
-      maxTokens[c] = Math.max(maxTokens[c]!, cellMax);
+      const len = cell.contentHtml.replace(/<[^>]+>/g, '').trim().length;
+      if (len > maxTokens[c]!) {
+        maxTokens[c] = len;
+      }
     });
   });
 
-  const sumMax = maxTokens.reduce((s, w) => s + w, 0);
-  const usable = Math.max(numCols * MIN_COL_WIDTH, targetWidth);
-
+  const charPx = 8.5;
+  const paddingPx = 20;
   next.colWidths = maxTokens.map((val) => {
-    const proportion = sumMax > 0 ? val / sumMax : 1 / numCols;
-    return Math.max(MIN_COL_WIDTH, Math.round(usable * proportion));
+    const estimated = Math.round(val * charPx + paddingPx);
+    return Math.max(MIN_COL_WIDTH, Math.min(DEFAULT_COL_WIDTH * 2, estimated));
+  });
+
+  if (targetWidth != null && targetWidth > 0) {
+    return fitColWidthsToWidth(next, targetWidth);
+  }
+  return next;
+}
+
+export function fitColWidthsToWidth(attrs: WidgetTableAttrs, targetWidth: number): WidgetTableAttrs {
+  const next = cloneAttrs(attrs);
+  const currentWidth = tablePixelWidth(next);
+  if (currentWidth <= 0 || targetWidth <= 0) return next;
+
+  const ratio = targetWidth / currentWidth;
+  const cols = next.colWidths.length;
+  let allocated = 0;
+
+  next.colWidths = next.colWidths.map((w, i) => {
+    if (i === cols - 1) {
+      return Math.max(MIN_COL_WIDTH, targetWidth - allocated);
+    }
+    const nw = Math.max(MIN_COL_WIDTH, Math.round(w * ratio));
+    allocated += nw;
+    return nw;
   });
 
   return next;
@@ -491,39 +666,197 @@ export function distributeColsEvenly(attrs: WidgetTableAttrs): WidgetTableAttrs 
   const numCols = next.colWidths.length;
   if (numCols === 0) return next;
   const total = tablePixelWidth(next);
-  const each = Math.max(MIN_COL_WIDTH, Math.round(total / numCols));
+  const each = Math.max(MIN_COL_WIDTH, Math.floor(total / numCols));
   next.colWidths = Array.from({ length: numCols }, () => each);
   return next;
 }
 
-export function migrateDocTables(doc: {
-  type?: string;
-  content?: Array<Record<string, unknown>>;
-}): typeof doc {
-  if (!doc.content) return doc;
-  return {
-    ...doc,
-    content: doc.content.map((node) => {
-      if (node.type !== 'table') return node;
-      const content = node.content as WidgetTableAttrs['cells'] | undefined;
-      // Already a widget (no nested rows)
-      if (!content || !Array.isArray(content) || content.length === 0) {
-        return {
-          type: 'table',
-          attrs: normalizeAttrs(node.attrs as Partial<WidgetTableAttrs>),
-        };
+export interface TableStylePreset {
+  id: string;
+  /** Ribbon gallery label. */
+  name: string;
+  headerBackground: string | null;
+  headerColor: string | null;
+  bodyBackground: string | null;
+  bodyColor: string | null;
+  /** Shading of even body rows when banding is enabled. */
+  bandBackground: string | null;
+  borderStyle: string | null;
+  borderColor: string | null;
+  borderWidth: number | null;
+  cellBorderStyle: string | null;
+  cellBorderColor: string | null;
+  cellBorderWidth: number | null;
+}
+
+/** Word-like table gallery. `plain` removes every preset color. */
+export const TABLE_STYLE_PRESETS: TableStylePreset[] = [
+  {
+    id: 'plain',
+    name: 'Sin formato',
+    headerBackground: null,
+    headerColor: null,
+    bodyBackground: null,
+    bodyColor: null,
+    bandBackground: null,
+    borderStyle: null,
+    borderColor: null,
+    borderWidth: null,
+    cellBorderStyle: null,
+    cellBorderColor: null,
+    cellBorderWidth: null,
+  },
+  {
+    id: 'grid',
+    name: 'Cuadrícula',
+    headerBackground: '#f1f5f9',
+    headerColor: '#0f172a',
+    bodyBackground: '#ffffff',
+    bodyColor: '#1f2937',
+    bandBackground: '#f8fafc',
+    borderStyle: 'solid',
+    borderColor: '#94a3b8',
+    borderWidth: 1,
+    cellBorderStyle: 'solid',
+    cellBorderColor: '#cbd5e1',
+    cellBorderWidth: 1,
+  },
+  {
+    id: 'grid-strong',
+    name: 'Cuadrícula intensa',
+    headerBackground: '#1f2937',
+    headerColor: '#ffffff',
+    bodyBackground: '#ffffff',
+    bodyColor: '#111827',
+    bandBackground: '#f3f4f6',
+    borderStyle: 'solid',
+    borderColor: '#111827',
+    borderWidth: 1.5,
+    cellBorderStyle: 'solid',
+    cellBorderColor: '#4b5563',
+    cellBorderWidth: 1,
+  },
+  {
+    id: 'blue',
+    name: 'Azul',
+    headerBackground: '#1d4ed8',
+    headerColor: '#ffffff',
+    bodyBackground: '#ffffff',
+    bodyColor: '#1e293b',
+    bandBackground: '#eff6ff',
+    borderStyle: 'solid',
+    borderColor: '#3b82f6',
+    borderWidth: 1,
+    cellBorderStyle: 'solid',
+    cellBorderColor: '#bfdbfe',
+    cellBorderWidth: 1,
+  },
+  {
+    id: 'emerald',
+    name: 'Esmeralda',
+    headerBackground: '#047857',
+    headerColor: '#ffffff',
+    bodyBackground: '#ffffff',
+    bodyColor: '#064e3b',
+    bandBackground: '#ecfdf5',
+    borderStyle: 'solid',
+    borderColor: '#10b981',
+    borderWidth: 1,
+    cellBorderStyle: 'solid',
+    cellBorderColor: '#a7f3d0',
+    cellBorderWidth: 1,
+  },
+  {
+    id: 'violet',
+    name: 'Violeta',
+    headerBackground: '#6d28d9',
+    headerColor: '#ffffff',
+    bodyBackground: '#ffffff',
+    bodyColor: '#2e1065',
+    bandBackground: '#f5f3ff',
+    borderStyle: 'solid',
+    borderColor: '#8b5cf6',
+    borderWidth: 1,
+    cellBorderStyle: 'solid',
+    cellBorderColor: '#ddd6fe',
+    cellBorderWidth: 1,
+  },
+];
+
+export function applyTableStylePreset(attrs: WidgetTableAttrs, styleId: string | null): WidgetTableAttrs {
+  const next = cloneAttrs(attrs);
+  next.styleId = styleId;
+  const preset = TABLE_STYLE_PRESETS.find((p) => p.id === styleId);
+  if (!preset || styleId === 'plain') {
+    next.borderStyle = null;
+    next.borderColor = null;
+    next.borderWidth = null;
+    next.backgroundColor = null;
+    next.cells.forEach((row) => {
+      row.forEach((c) => {
+        c.backgroundColor = null;
+        c.color = null;
+        c.borderStyle = null;
+        c.borderColor = null;
+        c.borderWidth = null;
+      });
+    });
+    return next;
+  }
+
+  next.borderStyle = preset.borderStyle;
+  next.borderColor = preset.borderColor;
+  next.borderWidth = preset.borderWidth;
+  next.backgroundColor = preset.bodyBackground;
+
+  next.cells.forEach((row, r) => {
+    const isHeader = next.withHeaderRow && r === 0;
+    const isEven = r % 2 === 0;
+    row.forEach((c) => {
+      if (isHeader) {
+        c.backgroundColor = preset.headerBackground;
+        c.color = preset.headerColor;
+      } else if (next.banded && isEven && preset.bandBackground) {
+        c.backgroundColor = preset.bandBackground;
+        c.color = preset.bodyColor;
+      } else {
+        c.backgroundColor = preset.bodyBackground;
+        c.color = preset.bodyColor;
       }
-      const first = content[0] as { type?: string };
-      if (first && first.type === 'tableRow') {
-        return {
-          type: 'table',
-          attrs: legacyTableToAttrs(node as Parameters<typeof legacyTableToAttrs>[0]),
-        };
-      }
+      c.borderStyle = preset.cellBorderStyle;
+      c.borderColor = preset.cellBorderColor;
+      c.borderWidth = preset.cellBorderWidth;
+    });
+  });
+
+  return next;
+}
+
+export function refreshTableStyle(attrs: WidgetTableAttrs): WidgetTableAttrs {
+  if (!attrs.styleId) return attrs;
+  return applyTableStylePreset(attrs, attrs.styleId);
+}
+
+/** Migrate legacy TipTap table nodes across a full JSON doc into widget tables. */
+export function migrateDocTables(doc: any): any {
+  if (!doc || typeof doc !== 'object') return doc;
+  if (doc.type === 'table') {
+    if (doc.attrs && Array.isArray(doc.attrs.cells)) {
       return {
-        type: 'table',
-        attrs: normalizeAttrs(node.attrs as Partial<WidgetTableAttrs>),
+        ...doc,
+        attrs: normalizeAttrs(doc.attrs),
       };
-    }),
-  };
+    }
+    return {
+      type: 'table',
+      attrs: legacyTableToAttrs(doc),
+    };
+  }
+  if (Array.isArray(doc.content)) {
+    return {
+      ...doc,
+      content: doc.content.map(migrateDocTables),
+    };
+  }
+  return doc;
 }

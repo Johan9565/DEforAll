@@ -18,7 +18,7 @@ export interface MeasuredUnit {
   height: number;
 }
 
-const MIN_FILL_PX = 4;
+const MIN_FILL_PX = 0;
 const LINE_TOP_EPS_PX = 3;
 
 function measureDomHeight(view: EditorView, nodePos: number): number {
@@ -35,7 +35,7 @@ function blockMarginBottom(view: EditorView, nodePos: number): number {
 }
 
 /**
- * Parte un bloque de texto en líneas visuales con coordsAtPos.
+ * Split a text block into visual lines using coordsAtPos.
  */
 function measureTextblockLines(
   view: EditorView,
@@ -120,6 +120,7 @@ function collectNodeUnits(
   }
 
   if (type === 'table') {
+    // Tables manage their own internal row pagination in WidgetTableView
     return [{ pos: nodePos, height: measureDomHeight(view, nodePos) }];
   }
 
@@ -130,7 +131,7 @@ function collectNodeUnits(
   return [{ pos: nodePos, height: measureDomHeight(view, nodePos) }];
 }
 
-/** Mide unidades paginables: líneas en párrafos, filas en tablas, ítems en listas. */
+/** Measures all pageable units: lines in paragraphs, lists, blocks. */
 export function collectMeasuredUnits(
   view: EditorView,
   _bodyHeightPx: number,
@@ -185,7 +186,7 @@ export function layoutVirtualPages(
   return { breaks, pageCount: Math.max(1, pageIndex) };
 }
 
-/** Respaldo: cuenta hojas según altura real del DOM tras insertar separadores. */
+/** Backup: count pages according to rendered DOM height. */
 export function estimateRenderedPageCount(
   view: EditorView,
   metrics: PageMetrics,
@@ -197,39 +198,51 @@ export function estimateRenderedPageCount(
 }
 
 export function syncVirtualSheets(
-  documentEl: HTMLElement,
-  metrics: PageMetrics,
+  stageEl: HTMLElement,
+  metricsResolver: PageMetrics | ((pageIndex: number) => PageMetrics),
   pageCount: number,
   gapPx: number,
 ): void {
-  let sheetsRoot = documentEl.querySelector<HTMLElement>('.cde-virtual-sheets');
+  let sheetsRoot = stageEl.querySelector<HTMLElement>('.cde-virtual-sheets');
 
   if (!sheetsRoot) {
     sheetsRoot = document.createElement('div');
     sheetsRoot.className = 'cde-virtual-sheets';
     sheetsRoot.setAttribute('aria-hidden', 'true');
-    documentEl.insertBefore(sheetsRoot, documentEl.firstChild);
+    stageEl.insertBefore(sheetsRoot, stageEl.firstChild);
   }
 
   sheetsRoot.replaceChildren();
 
+  let totalHeight = 0;
+  let maxWidth = 0;
+
   for (let i = 0; i < pageCount; i += 1) {
+    const m = typeof metricsResolver === 'function' ? metricsResolver(i) : metricsResolver;
+    maxWidth = Math.max(maxWidth, m.pageWidthPx);
+
     const sheet = document.createElement('div');
-    sheet.className = 'cde-virtual-sheet';
-    sheet.style.height = `${metrics.pageHeightPx}px`;
+    sheet.className = `cde-virtual-sheet cde-virtual-sheet--${m.pageSize} cde-virtual-sheet--${m.orientation}`;
+    sheet.style.height = `${m.pageHeightPx}px`;
+    sheet.style.width = `${m.pageWidthPx}px`;
+    sheet.style.marginLeft = 'auto';
+    sheet.style.marginRight = 'auto';
+
     if (i < pageCount - 1) {
       sheet.style.marginBottom = `${gapPx}px`;
     }
 
     const num = document.createElement('span');
     num.className = 'cde-virtual-sheet__num';
-    num.textContent = String(i + 1);
+    num.textContent = `Página ${i + 1}`;
     sheet.appendChild(num);
 
     sheetsRoot.appendChild(sheet);
+
+    totalHeight += m.pageHeightPx + (i < pageCount - 1 ? gapPx : 0);
   }
 
-  const totalHeight =
-    pageCount * metrics.pageHeightPx + Math.max(0, pageCount - 1) * gapPx;
-  documentEl.style.minHeight = `${totalHeight}px`;
+  stageEl.style.minHeight = `${totalHeight}px`;
+  stageEl.style.width = `${maxWidth}px`;
+  stageEl.style.setProperty('--ruler-half-width', `${maxWidth / 2}px`);
 }

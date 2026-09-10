@@ -17,11 +17,17 @@ export interface PageSheetOptions {
   editable: boolean;
   gapPx: number;
   isActive: boolean;
+  isMounted?: boolean;
   onActivate: (pageId: string, focus: ActivePageFocus) => void;
   onContentChange: (pageId: string, json: JSONContent, html: string) => void;
   onEditorReady: (pageId: string, editor: Editor) => void;
   onEditorDestroyed: (pageId: string) => void;
   onPageNav?: (pageId: string, direction: 'next' | 'prev') => boolean;
+  /**
+   * Backspace at doc start on a page after the first — host should join with
+   * the previous sheet. Return true if handled.
+   */
+  onBackspaceAtStart?: (pageId: string) => boolean;
   /** Return true if cross-page delete was handled (Backspace / Delete / Cut). */
   onCrossPageDelete?: () => boolean;
   /**
@@ -37,7 +43,7 @@ export interface PageSheetOptions {
 }
 
 /**
- * One physical sheet: static HTML when inactive, TipTap when active.
+ * One physical sheet: static HTML when inactive, TipTap when active or within active window.
  * Shared typography classes prevent layout shift on activate/deactivate.
  */
 export class PageSheet {
@@ -73,8 +79,13 @@ export class PageSheet {
 
     this.root.append(this.contentHost, footer);
 
-    if (options.isActive) {
+    if (options.isMounted ?? options.isActive) {
       this.mountEditor(options.page.content);
+      if (options.isActive) {
+        this.root.classList.add('is-active');
+      } else {
+        this.root.classList.remove('is-active');
+      }
     } else {
       this.renderStatic(options.page.htmlCache);
     }
@@ -92,12 +103,18 @@ export class PageSheet {
       pageIndex < pageCount - 1 ? `${this.options.gapPx}px` : '0';
   }
 
-  public syncFromStore(page: PageData, isActive: boolean): void {
-    if (isActive) {
+  public syncFromStore(page: PageData, isMounted: boolean, isCurrentActive = isMounted): void {
+    if (isMounted) {
       if (!this.editor) {
-        // setActivePage will apply the real caret; avoid onCreate focusing 'end'
+        // Mounted in background (adjacent sheet) — suppress auto focus
         this.suppressAutoFocus = true;
         this.mountEditor(page.content);
+      }
+      if (isCurrentActive) {
+        this.root.classList.add('is-active');
+        this.root.classList.remove('is-static');
+      } else {
+        this.root.classList.remove('is-active', 'is-static');
       }
       return;
     }
@@ -125,11 +142,15 @@ export class PageSheet {
   }
 
   public activate(content: JSONContent, focus?: ActivePageFocus): void {
+    this.root.classList.add('is-active');
+    this.root.classList.remove('is-static');
     this.pendingFocus = focus ?? { type: 'start' };
     if (this.editor) {
-      // Editor may already exist (syncFromStore raced ahead of setActivePage).
-      // Apply caret now; also keep pendingFocus so a queued onCreate rAF
-      // does not fall through to focus('end').
+      const curJson = JSON.stringify(this.editor.getJSON());
+      const newJson = JSON.stringify(content);
+      if (curJson !== newJson) {
+        this.editor.commands.setContent(migrateDocTables(content) as JSONContent, false);
+      }
       this.applyFocus(this.pendingFocus);
       this.suppressAutoFocus = true;
       return;
@@ -154,7 +175,7 @@ export class PageSheet {
   private renderStatic(html: string): void {
     this.contentHost.replaceChildren();
     const staticEl = document.createElement('div');
-    staticEl.className = 'cde-page-sheet__static cde-page-content';
+    staticEl.className = 'cde-page-sheet__static cde-page-content ProseMirror';
     staticEl.innerHTML = html || '<p></p>';
     // Allow native selection across pages; activate only on plain click
     staticEl.addEventListener('mousedown', this.handleStaticMouseDown);
@@ -205,7 +226,6 @@ export class PageSheet {
     mount.className = 'cde-page-sheet__editor-mount';
     this.contentHost.appendChild(mount);
 
-    this.root.classList.add('is-active');
     this.root.classList.remove('is-static');
 
     this.editor = new Editor({
@@ -221,6 +241,15 @@ export class PageSheet {
           mousedown: (_view, event) => {
             if (event.button === 0) {
               this.options.onEditorPointerDown?.(this.pageId, event);
+              if (!this.root.classList.contains('is-active')) {
+                this.options.onActivate(this.pageId, { type: 'none' });
+              }
+            }
+            return false;
+          },
+          focus: () => {
+            if (!this.root.classList.contains('is-active')) {
+              this.options.onActivate(this.pageId, { type: 'none' });
             }
             return false;
           },
@@ -274,6 +303,10 @@ export class PageSheet {
     const editor = this.editor;
     if (!editor) return;
 
+    if (focus.type === 'none') {
+      return;
+    }
+
     if (focus.type === 'coords') {
       const pos = editor.view.posAtCoords({
         left: focus.left,
@@ -306,6 +339,31 @@ export class PageSheet {
     editor.commands.focus('start');
   }
 
+  private isAtDocStart(editor: Editor): boolean {
+    const { selection } = editor.state;
+    if (!selection.empty) return false;
+    if (selection.from <= 1) return true;
+    const $from = selection.$from;
+    if ($from.parentOffset !== 0) return false;
+    for (let d = 0; d < $from.depth; d++) {
+      if ($from.index(d) !== 0) return false;
+    }
+    return true;
+  }
+
+  private isAtDocEnd(editor: Editor): boolean {
+    const { selection, doc } = editor.state;
+    if (!selection.empty) return false;
+    if (selection.to >= doc.content.size - 1) return true;
+    const $to = selection.$to;
+    if ($to.parentOffset !== $to.parent.content.size) return false;
+    for (let d = 0; d < $to.depth; d++) {
+      const parent = $to.node(d);
+      if ($to.index(d) !== parent.childCount - 1) return false;
+    }
+    return true;
+  }
+
   private handleEditorKeyDown(event: KeyboardEvent): boolean {
     const isCut =
       (event.key === 'x' || event.key === 'X') &&
@@ -321,13 +379,21 @@ export class PageSheet {
     }
 
     const editor = this.editor;
-    if (!editor || !this.options.onPageNav) return false;
+    if (!editor) return false;
 
-    const { selection } = editor.state;
-    const atStart = selection.empty && selection.$anchor.pos <= 1;
-    const atEnd =
-      selection.empty &&
-      selection.$anchor.pos >= editor.state.doc.content.size - 1;
+    const atStart = this.isAtDocStart(editor);
+    const atEnd = this.isAtDocEnd(editor);
+
+    if (
+      event.key === 'Backspace' &&
+      atStart &&
+      !event.shiftKey &&
+      this.options.onBackspaceAtStart?.(this.pageId)
+    ) {
+      return true;
+    }
+
+    if (!this.options.onPageNav) return false;
 
     if (
       (event.key === 'ArrowDown' || event.key === 'ArrowRight') &&

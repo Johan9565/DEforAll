@@ -1,9 +1,10 @@
 import type { JSONContent } from '@tiptap/core';
-import { splitAttrsAtRow, normalizeAttrs, type WidgetTableAttrs } from '../extensions/widgetTable/model';
+import { splitAttrsAtRow, normalizeAttrs, cloneAttrs, MIN_ROW_HEIGHT, type WidgetTableAttrs } from '../extensions/widgetTable/model';
 
 export type TableSplitResult = {
   table1: JSONContent | null;
   table2: JSONContent | null;
+  splitIndex?: number;
 };
 
 function widgetFromJson(tableNodeJSON: JSONContent): WidgetTableAttrs {
@@ -28,7 +29,7 @@ export function splitTableOnOverflow(
 ): TableSplitResult {
   const attrs = widgetFromJson(tableNodeJSON);
   const rows = attrs.cells;
-  if (rows.length === 0) return { table1: null, table2: null };
+  if (rows.length === 0) return { table1: null, table2: null, splitIndex: -1 };
 
   const domRows = tableDom.querySelectorAll('tr');
   let currentHeight = 0;
@@ -43,18 +44,30 @@ export function splitTableOnOverflow(
     if (splitIndex === -1) currentHeight += rowHeight;
   }
 
-  if (splitIndex === 0 && isTopNode && rows.length > 1) {
-    splitIndex = 1;
+  if (splitIndex === 0 && isTopNode) {
+    if (rows.length > 1) {
+      splitIndex = 1;
+    } else {
+      const maxH = Math.max(MIN_ROW_HEIGHT, Math.floor(maxAllowedHeight - 4));
+      const clampedAttrs = cloneAttrs(attrs);
+      clampedAttrs.rowHeights[0] = Math.min(clampedAttrs.rowHeights[0] ?? maxH, maxH);
+      return {
+        table1: toJson(clampedAttrs),
+        table2: null,
+        splitIndex: -1,
+      };
+    }
   }
 
   if (splitIndex === -1) {
-    return { table1: toJson(attrs), table2: null };
+    return { table1: toJson(attrs), table2: null, splitIndex: -1 };
   }
 
   const { first, second } = splitAttrsAtRow(attrs, splitIndex);
   return {
     table1: first ? toJson(first) : null,
     table2: second ? toJson(second) : null,
+    splitIndex,
   };
 }
 
@@ -66,16 +79,40 @@ export function splitTableAtLimitY(
 ): TableSplitResult {
   const attrs = widgetFromJson(tableNodeJSON);
   const rows = attrs.cells;
-  if (rows.length === 0) return { table1: null, table2: null };
+  if (rows.length === 0) return { table1: null, table2: null, splitIndex: -1 };
 
   const domRows = tableDom.querySelectorAll('tr');
   let splitIndex = -1;
   const count = Math.min(rows.length, domRows.length);
-  for (let i = 0; i < count; i += 1) {
-    const bottom = (domRows[i] as HTMLElement).getBoundingClientRect().bottom;
-    if (bottom > limitY) {
-      splitIndex = i;
-      break;
+
+  if (count > 0) {
+    for (let i = 0; i < count; i += 1) {
+      const bottom = (domRows[i] as HTMLElement).getBoundingClientRect().bottom;
+      if (bottom > limitY) {
+        splitIndex = i;
+        break;
+      }
+    }
+  } else {
+    // Fallback if rows cannot be measured individually in DOM:
+    // Estimate by row heights or default 36px per row
+    const tableTop = tableDom.getBoundingClientRect().top;
+    let accHeight = tableTop;
+    for (let i = 0; i < rows.length; i += 1) {
+      const rh = attrs.rowHeights[i] ?? 36;
+      accHeight += rh;
+      if (accHeight > limitY) {
+        splitIndex = i;
+        break;
+      }
+    }
+  }
+
+  // Safety net: if tableDom itself extends past limitY, but splitIndex wasn't found (margin/padding/border):
+  if (splitIndex === -1 && rows.length > 1) {
+    const tableBottom = tableDom.getBoundingClientRect().bottom;
+    if (tableBottom > limitY) {
+      splitIndex = rows.length - 1;
     }
   }
 
@@ -84,12 +121,13 @@ export function splitTableAtLimitY(
   }
 
   if (splitIndex === -1) {
-    return { table1: toJson(attrs), table2: null };
+    return { table1: toJson(attrs), table2: null, splitIndex: -1 };
   }
 
   const { first, second } = splitAttrsAtRow(attrs, splitIndex);
   return {
     table1: first ? toJson(first) : null,
     table2: second ? toJson(second) : null,
+    splitIndex,
   };
 }

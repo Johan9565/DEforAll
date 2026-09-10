@@ -146,6 +146,7 @@ export class PrintPreview {
       .cde-paged-content table {
         border-collapse: collapse;
         width: 100%;
+        max-width: 100%;
         margin: 0 0 1em;
         table-layout: fixed;
       }

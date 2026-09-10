@@ -51,6 +51,7 @@
     "@tiptap/starter-kit": "^2.11.0"
   },
   "dependencies": {
+    "lucide": "^1.42.0",
     "pagedjs": "^0.4.3"
   },
   "devDependencies": {

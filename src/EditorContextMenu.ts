@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/core';
+import type { DocumentRestrictions } from './types';
 import { Fragment } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
 import './styles/context-menu.css';
@@ -8,6 +9,7 @@ export interface EditorContextMenuOptions {
   container: HTMLElement;
   getEditor: () => Editor | null;
   editable?: boolean;
+  getRestrictions?: () => DocumentRestrictions;
   /**
    * Ensure the page under the pointer is active (mount TipTap) before
    * running menu actions. Called with client coordinates.
@@ -32,11 +34,11 @@ const THEME_COLORS: { label: string; color: string }[] = [
 ];
 
 const BORDER_STYLES: { label: string; value: string }[] = [
-  { label: 'Sólido —', value: 'solid' },
-  { label: 'Discontinuo - -', value: 'dashed' },
-  { label: 'Punteado · ·', value: 'dotted' },
-  { label: 'Doble ═', value: 'double' },
-  { label: 'Sin borde ✕', value: 'none' },
+  { label: 'Sólido', value: 'solid' },
+  { label: 'Discontinuo', value: 'dashed' },
+  { label: 'Punteado', value: 'dotted' },
+  { label: 'Doble', value: 'double' },
+  { label: 'Sin borde', value: 'none' },
 ];
 
 const BORDER_WIDTHS: { label: string; value: number }[] = [
@@ -173,220 +175,96 @@ export class EditorContextMenu {
     const inTable = this.inTable();
     const hasRange = !editor.state.selection.empty;
 
-    // Quick Clipboard Row
-    const clipRow = document.createElement('div');
-    clipRow.className = 'cde-ctx-menu__row';
+    menu.appendChild(this.createMenuItem('Cortar', () => this.cut(), !hasRange, 'Ctrl+X'));
+    menu.appendChild(this.createMenuItem('Copiar', () => this.copy(), !hasRange, 'Ctrl+C'));
+    menu.appendChild(this.createMenuItem('Pegar', () => this.paste(), false, 'Ctrl+V'));
+    menu.appendChild(this.createSeparator());
 
-    const btnCut = this.createCompactButton('Cortar', 'Ctrl+X', !hasRange, () => this.cut());
-    const btnCopy = this.createCompactButton('Copiar', 'Ctrl+C', !hasRange, () => this.copy());
-    const btnPaste = this.createCompactButton('Pegar', 'Ctrl+V', false, () => this.paste());
-    clipRow.append(btnCut, btnCopy, btnPaste);
-    menu.appendChild(clipRow);
-
-    // Text formatting row
-    const fmtRow = document.createElement('div');
-    fmtRow.className = 'cde-ctx-menu__row';
-    fmtRow.append(
-      this.createIconButton('<b>B</b>', 'Negrita', editor.isActive('bold'), () => {
+    const fmt = document.createElement('div');
+    fmt.className = 'cde-ctx-menu__format';
+    fmt.append(
+      this.createFormatButton('B', 'Negrita', 'cde-ctx-menu__format-btn--bold', editor.isActive('bold'), () => {
         editor.chain().focus().toggleBold().run();
       }),
-      this.createIconButton('<i>I</i>', 'Cursiva', editor.isActive('italic'), () => {
+      this.createFormatButton('I', 'Cursiva', 'cde-ctx-menu__format-btn--italic', editor.isActive('italic'), () => {
         editor.chain().focus().toggleItalic().run();
       }),
-      this.createIconButton('<u>U</u>', 'Subrayado', editor.isActive('underline'), () => {
+      this.createFormatButton('U', 'Subrayado', 'cde-ctx-menu__format-btn--underline', editor.isActive('underline'), () => {
         editor.chain().focus().toggleUnderline().run();
       }),
-      this.createIconButton('• Lista', 'Viñetas', editor.isActive('bulletList'), () => {
-        editor.chain().focus().toggleBulletList().run();
-      }),
-      this.createIconButton('1. Lista', 'Numeración', editor.isActive('orderedList'), () => {
-        editor.chain().focus().toggleOrderedList().run();
-      }),
     );
-    menu.appendChild(fmtRow);
+    menu.appendChild(fmt);
+    menu.appendChild(this.createSeparator());
 
+    menu.appendChild(
+      this.createMenuItem('Viñetas', () => editor.chain().focus().toggleBulletList().run()),
+    );
+    menu.appendChild(
+      this.createMenuItem('Numeración', () => editor.chain().focus().toggleOrderedList().run()),
+    );
+    menu.appendChild(this.createMenuItem('Vínculo…', () => this.editLink()));
     menu.appendChild(this.createSeparator());
 
     if (inTable) {
-      // Table Header Section
-      menu.appendChild(this.createHeading('Operaciones de Tabla'));
-
-      // Row & Column operations
-      const gridOps = document.createElement('div');
-      gridOps.className = 'cde-ctx-menu__grid-ops';
-      gridOps.append(
-        this.createMenuItem('+ Fila arriba', () => editor.chain().focus().addRowBefore().run()),
-        this.createMenuItem('+ Fila abajo', () => editor.chain().focus().addRowAfter().run()),
-        this.createMenuItem('+ Col. izquierda', () => editor.chain().focus().addColumnBefore().run()),
-        this.createMenuItem('+ Col. derecha', () => editor.chain().focus().addColumnAfter().run()),
-        this.createMenuItem('- Eliminar fila', () => editor.chain().focus().deleteRow().run()),
-        this.createMenuItem('- Eliminar columna', () => editor.chain().focus().deleteColumn().run()),
-      );
-      menu.appendChild(gridOps);
-
+      menu.appendChild(this.createHeading('Tabla'));
+      menu.appendChild(this.createMenuItem('Insertar fila encima', () => editor.chain().focus().addRowBefore().run()));
+      menu.appendChild(this.createMenuItem('Insertar fila debajo', () => editor.chain().focus().addRowAfter().run()));
+      menu.appendChild(this.createMenuItem('Insertar columna a la izquierda', () => editor.chain().focus().addColumnBefore().run()));
+      menu.appendChild(this.createMenuItem('Insertar columna a la derecha', () => editor.chain().focus().addColumnAfter().run()));
+      menu.appendChild(this.createMenuItem('Eliminar fila', () => editor.chain().focus().deleteRow().run()));
+      menu.appendChild(this.createMenuItem('Eliminar columna', () => editor.chain().focus().deleteColumn().run()));
       menu.appendChild(this.createSeparator());
 
-      // Merge / Split & Alignment & Dimensions & Formulas
-      menu.appendChild(this.createHeading('Celdas (Combinar, Dividir y Tamaño)'));
-      const cellOps = document.createElement('div');
-      cellOps.className = 'cde-ctx-menu__grid-ops';
-      cellOps.append(
-        this.createMenuItem('🔀 Combinar celdas', () => (editor.commands as any).mergeCells()),
-        this.createMenuItem('✂️ Dividir en 2 columnas', () => (editor.commands as any).splitCell({ cols: 2 })),
-        this.createMenuItem('✂️ Dividir en 3 columnas', () => (editor.commands as any).splitCell({ cols: 3 })),
-        this.createMenuItem('✂️ Dividir en N…', () => this.promptSplitCell()),
-        this.createMenuItem('✂️ Dividir en 2 filas', () => (editor.commands as any).splitCell({ rows: 2 })),
-        this.createMenuItem('📐 Autoajustar al contenido', () => (editor.commands as any).autoFitColumns()),
-        this.createMenuItem('⚖️ Distribuir columnas', () => (editor.commands as any).distributeColumns()),
-        this.createMenuItem('🧮 Actualizar fórmulas (=SUM...)', () => (editor.commands as any).recalculateFormulas()),
-        this.createMenuItem('📏 Ancho de celda…', () => this.promptCellWidth()),
-        this.createMenuItem('📏 Alto de celda…', () => this.promptCellHeight()),
-        this.createMenuItem('⬆ Alinear arriba', () => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()),
-        this.createMenuItem('⬍ Alinear centro', () => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()),
-        this.createMenuItem('⬇ Alinear abajo', () => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()),
-      );
-      menu.appendChild(cellOps);
-
+      menu.appendChild(this.createHeading('Celdas'));
+      menu.appendChild(this.createMenuItem('Combinar celdas', () => (editor.commands as any).mergeCells()));
+      menu.appendChild(this.createMenuItem('Dividir en 2 columnas', () => (editor.commands as any).splitCell({ cols: 2 })));
+      menu.appendChild(this.createMenuItem('Dividir en 3 columnas', () => (editor.commands as any).splitCell({ cols: 3 })));
+      menu.appendChild(this.createMenuItem('Dividir en columnas…', () => this.promptSplitCell()));
+      menu.appendChild(this.createMenuItem('Dividir en 2 filas', () => (editor.commands as any).splitCell({ rows: 2 })));
+      menu.appendChild(this.createMenuItem('Ancho de celda…', () => this.promptCellWidth()));
+      menu.appendChild(this.createMenuItem('Alto de celda…', () => this.promptCellHeight()));
+      menu.appendChild(this.createMenuItem('Alinear arriba', () => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()));
+      menu.appendChild(this.createMenuItem('Alinear al centro', () => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()));
+      menu.appendChild(this.createMenuItem('Alinear abajo', () => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()));
+      menu.appendChild(this.createMenuItem('Autoajustar columnas', () => (editor.commands as any).autoFitColumns()));
+      menu.appendChild(this.createMenuItem('Distribuir columnas', () => (editor.commands as any).distributeColumns()));
+      menu.appendChild(this.createMenuItem('Actualizar fórmulas', () => (editor.commands as any).recalculateFormulas()));
       menu.appendChild(this.createSeparator());
 
-      // Background Color Palette (Pintar)
-      menu.appendChild(this.createHeading('Pintar Fondo (Celda / Tabla)'));
-      const colorSection = document.createElement('div');
-      colorSection.className = 'cde-ctx-menu__palette-group';
-
-      const cellColorRow = document.createElement('div');
-      cellColorRow.className = 'cde-ctx-menu__palette';
-      cellColorRow.title = 'Color de fondo de la celda';
-      THEME_COLORS.forEach((tc) => {
-        const sw = document.createElement('button');
-        sw.type = 'button';
-        sw.className = 'cde-ctx-menu__swatch-btn';
-        sw.title = `Celda: ${tc.label}`;
-        sw.style.backgroundColor = tc.color || '#f8fafc';
-        if (!tc.color) sw.textContent = '✕';
-        sw.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.hide();
-          editor.chain().focus().setCellAttribute('backgroundColor', tc.color || null).run();
-        });
-        cellColorRow.appendChild(sw);
-      });
-
-      const tableColorRow = document.createElement('div');
-      tableColorRow.className = 'cde-ctx-menu__palette';
-      tableColorRow.title = 'Color de fondo de toda la tabla';
-      THEME_COLORS.forEach((tc) => {
-        const sw = document.createElement('button');
-        sw.type = 'button';
-        sw.className = 'cde-ctx-menu__swatch-btn';
-        sw.title = `Toda la tabla: ${tc.label}`;
-        sw.style.backgroundColor = tc.color || '#f8fafc';
-        if (!tc.color) sw.textContent = '✕';
-        sw.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.hide();
-          (editor.commands as any).setTableBackground(tc.color || null);
-        });
-        tableColorRow.appendChild(sw);
-      });
-
-      const cellLabel = document.createElement('div');
-      cellLabel.className = 'cde-ctx-menu__sublabel';
-      cellLabel.textContent = 'Fondo Celda:';
-      const tableLabel = document.createElement('div');
-      tableLabel.className = 'cde-ctx-menu__sublabel';
-      tableLabel.textContent = 'Fondo Tabla:';
-
-      colorSection.append(cellLabel, cellColorRow, tableLabel, tableColorRow);
-      menu.appendChild(colorSection);
-
+      menu.appendChild(this.createHeading('Fondo'));
+      menu.appendChild(this.createPalette('Celda', THEME_COLORS, (color) => {
+        editor.chain().focus().setCellAttribute('backgroundColor', color || null).run();
+      }));
+      menu.appendChild(this.createPalette('Tabla', THEME_COLORS, (color) => {
+        (editor.commands as any).setTableBackground(color || null);
+      }));
       menu.appendChild(this.createSeparator());
 
-      // Border Decoration (Decorar bordes)
-      menu.appendChild(this.createHeading('Decorar Bordes (Estilo, Grosor, Color)'));
-      const borderSection = document.createElement('div');
-      borderSection.className = 'cde-ctx-menu__border-section';
-
-      // Style selector
-      const styleRow = document.createElement('div');
-      styleRow.className = 'cde-ctx-menu__chip-row';
-      BORDER_STYLES.forEach((bs) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'cde-ctx-menu__chip';
-        chip.textContent = bs.label;
-        chip.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.hide();
-          (editor.commands as any).setCellBorder({ style: bs.value });
-          (editor.commands as any).setTableBorder({ style: bs.value });
-        });
-        styleRow.appendChild(chip);
-      });
-
-      // Width selector
-      const widthRow = document.createElement('div');
-      widthRow.className = 'cde-ctx-menu__chip-row';
-      BORDER_WIDTHS.forEach((bw) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'cde-ctx-menu__chip';
-        chip.textContent = bw.label;
-        chip.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.hide();
-          (editor.commands as any).setCellBorder({ width: bw.value });
-          (editor.commands as any).setTableBorder({ width: bw.value });
-        });
-        widthRow.appendChild(chip);
-      });
-
-      // Border color row
-      const bColorRow = document.createElement('div');
-      bColorRow.className = 'cde-ctx-menu__palette';
-      THEME_COLORS.forEach((tc) => {
-        if (!tc.color) return;
-        const sw = document.createElement('button');
-        sw.type = 'button';
-        sw.className = 'cde-ctx-menu__swatch-btn';
-        sw.title = `Borde: ${tc.label}`;
-        sw.style.backgroundColor = tc.color;
-        sw.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.hide();
-          (editor.commands as any).setCellBorder({ color: tc.color });
-          (editor.commands as any).setTableBorder({ color: tc.color });
-        });
-        bColorRow.appendChild(sw);
-      });
-
-      borderSection.append(styleRow, widthRow, bColorRow);
-      menu.appendChild(borderSection);
-
+      menu.appendChild(this.createHeading('Bordes'));
+      menu.appendChild(this.createBorderSection(editor));
       menu.appendChild(this.createSeparator());
 
-      // Table Navigation and Deletion
-      menu.appendChild(this.createHeading('Ubicación y Gestión'));
       menu.appendChild(
-        this.createMenuItem('↑ Mover tabla un renglón arriba', () => this.moveTableByRow('up'), !this.canMoveTable('up')),
+        this.createMenuItem('Subir un renglón', () => this.moveTableByRow('up'), !this.canMoveTable('up')),
       );
       menu.appendChild(
-        this.createMenuItem('↓ Mover tabla un renglón abajo', () => this.moveTableByRow('down'), !this.canMoveTable('down')),
+        this.createMenuItem('Bajar un renglón', () => this.moveTableByRow('down'), !this.canMoveTable('down')),
       );
       menu.appendChild(
-        this.createMenuItem('🗑 Eliminar tabla completa', () => editor.chain().focus().deleteTable().run()),
+        this.createMenuItem('Eliminar tabla', () => editor.chain().focus().deleteTable().run(), false, '', true),
       );
     } else {
       menu.appendChild(
-        this.createMenuItem('➕ Insertar tabla', () => {
+        this.createMenuItem('Insertar tabla', () => {
           editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true, wrap: 'left' }).run();
         }),
       );
     }
 
     menu.appendChild(this.createSeparator());
-    menu.appendChild(this.createMenuItem('🔗 Vínculo…', () => this.editLink()));
-    menu.appendChild(this.createMenuItem('Seleccionar todo', () => editor.chain().focus().selectAll().run(), false, 'Ctrl+A'));
+    menu.appendChild(
+      this.createMenuItem('Seleccionar todo', () => editor.chain().focus().selectAll().run(), false, 'Ctrl+A'),
+    );
 
     document.body.appendChild(menu);
     this.menuEl = menu;
@@ -409,26 +287,17 @@ export class EditorContextMenu {
     menu.style.top = `${top}px`;
   }
 
-  private createCompactButton(label: string, shortcut: string, disabled: boolean, run: () => void): HTMLElement {
+  private createFormatButton(
+    letter: string,
+    title: string,
+    extraClass: string,
+    active: boolean,
+    run: () => void,
+  ): HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cde-ctx-menu__btn-compact';
-    btn.disabled = disabled;
-    btn.textContent = label;
-    btn.title = shortcut;
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      this.hide();
-      run();
-    });
-    return btn;
-  }
-
-  private createIconButton(html: string, title: string, active: boolean, run: () => void): HTMLElement {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `cde-ctx-menu__btn-icon ${active ? 'is-active' : ''}`;
-    btn.innerHTML = html;
+    btn.className = `cde-ctx-menu__format-btn ${extraClass}${active ? ' is-active' : ''}`;
+    btn.textContent = letter;
     btn.title = title;
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -438,10 +307,110 @@ export class EditorContextMenu {
     return btn;
   }
 
-  private createMenuItem(label: string, run: () => void, disabled = false, shortcut = ''): HTMLElement {
+  private createPalette(
+    label: string,
+    colors: { label: string; color: string }[],
+    apply: (color: string) => void,
+  ): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'cde-ctx-menu__palette-group';
+
+    const sub = document.createElement('div');
+    sub.className = 'cde-ctx-menu__sublabel';
+    sub.textContent = label;
+    wrap.appendChild(sub);
+
+    const row = document.createElement('div');
+    row.className = 'cde-ctx-menu__palette';
+    colors.forEach((tc) => {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'cde-ctx-menu__swatch-btn' + (tc.color ? '' : ' is-clear');
+      sw.title = tc.label;
+      if (tc.color) sw.style.backgroundColor = tc.color;
+      sw.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.hide();
+        apply(tc.color);
+      });
+      row.appendChild(sw);
+    });
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  private createBorderSection(editor: Editor): HTMLElement {
+    const section = document.createElement('div');
+    section.className = 'cde-ctx-menu__border-section';
+
+    const styleRow = document.createElement('div');
+    styleRow.className = 'cde-ctx-menu__chip-row';
+    BORDER_STYLES.forEach((bs) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'cde-ctx-menu__border-chip' + (bs.value === 'none' ? ' is-none' : '');
+      chip.title = bs.label;
+      const sample = document.createElement('span');
+      sample.className = 'cde-ctx-menu__border-sample';
+      sample.style.borderTopStyle = bs.value === 'none' ? 'solid' : bs.value;
+      chip.appendChild(sample);
+      chip.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.hide();
+        (editor.commands as any).setCellBorder({ style: bs.value });
+        (editor.commands as any).setTableBorder({ style: bs.value });
+      });
+      styleRow.appendChild(chip);
+    });
+
+    const widthRow = document.createElement('div');
+    widthRow.className = 'cde-ctx-menu__chip-row';
+    BORDER_WIDTHS.forEach((bw) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'cde-ctx-menu__chip';
+      chip.textContent = bw.label;
+      chip.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.hide();
+        (editor.commands as any).setCellBorder({ width: bw.value });
+        (editor.commands as any).setTableBorder({ width: bw.value });
+      });
+      widthRow.appendChild(chip);
+    });
+
+    const bColorRow = document.createElement('div');
+    bColorRow.className = 'cde-ctx-menu__palette';
+    THEME_COLORS.forEach((tc) => {
+      if (!tc.color) return;
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'cde-ctx-menu__swatch-btn';
+      sw.title = tc.label;
+      sw.style.backgroundColor = tc.color;
+      sw.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.hide();
+        (editor.commands as any).setCellBorder({ color: tc.color });
+        (editor.commands as any).setTableBorder({ color: tc.color });
+      });
+      bColorRow.appendChild(sw);
+    });
+
+    section.append(styleRow, widthRow, bColorRow);
+    return section;
+  }
+
+  private createMenuItem(
+    label: string,
+    run: () => void,
+    disabled = false,
+    shortcut = '',
+    danger = false,
+  ): HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cde-ctx-menu__item';
+    btn.className = 'cde-ctx-menu__item' + (danger ? ' is-danger' : '');
     btn.disabled = disabled;
 
     const span = document.createElement('span');
@@ -456,6 +425,8 @@ export class EditorContextMenu {
       btn.appendChild(sc);
     }
 
+    // Keep the caret and the table cell selection while the command runs.
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       if (disabled) return;

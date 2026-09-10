@@ -177,6 +177,8 @@ export class PageStore {
     let changed = false;
     while (this.pages.length > 1) {
       const last = this.pages[this.pages.length - 1]!;
+      if (last.id === this.activePageId) break;
+
       const nodes = last.content.content ?? [];
       const empty =
         nodes.length === 0 ||
@@ -184,9 +186,6 @@ export class PageStore {
           nodes[0]?.type === 'paragraph' &&
           (!nodes[0].content || nodes[0].content.length === 0));
       if (!empty) break;
-      if (this.activePageId === last.id) {
-        this.activePageId = this.pages[this.pages.length - 2]!.id;
-      }
       this.pages.pop();
       changed = true;
     }
