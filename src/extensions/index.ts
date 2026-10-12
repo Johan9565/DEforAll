@@ -3,7 +3,6 @@ import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
 import TextStyle from '@tiptap/extension-text-style';
@@ -19,6 +18,9 @@ import { FontSize } from './fontSize';
 import { Indent } from './indent';
 import { LineHeight } from './lineHeight';
 import { WidgetTable } from './widgetTable/WidgetTable';
+import { CustomImage } from './customImage/CustomImage';
+
+export { CustomImage } from './customImage/CustomImage';
 
 /**
  * Free/open-source TipTap extensions useful for a formal document editor.
@@ -52,7 +54,7 @@ export function createDocumentExtensions(options?: {
         rel: 'noopener noreferrer nofollow',
       },
     }),
-    Image.configure({
+    CustomImage.configure({
       allowBase64: true,
       HTMLAttributes: {
         class: 'cde-image',

@@ -255,3 +255,63 @@
   border-top-color: #d4d4d4;
   opacity: 0.7;
 }
+
+.cde-ctx-menu__item--has-sub {
+  position: relative;
+}
+
+.cde-ctx-menu__arrow {
+  color: #888;
+  font-size: 11px;
+  margin-left: 8px;
+}
+
+.cde-ctx-menu__sub {
+  position: absolute;
+  left: calc(100% - 2px);
+  top: -4px;
+  min-width: 13rem;
+  max-width: 17rem;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+  display: none;
+  z-index: 10001;
+}
+
+.cde-ctx-menu__item--has-sub:hover > .cde-ctx-menu__sub,
+.cde-ctx-menu__item--has-sub:focus-within > .cde-ctx-menu__sub {
+  display: block;
+}
+
+.cde-ctx-menu__lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cde-ctx-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #4b5563;
+}
+
+.cde-ctx-menu__item:hover:not(:disabled) .cde-ctx-menu__icon {
+  color: #111827;
+}
+
+.cde-ctx-menu__item.is-danger .cde-ctx-menu__icon {
+  color: #ef4444;
+}
+
+.cde-ctx-menu__item.is-danger:hover:not(:disabled) .cde-ctx-menu__icon {
+  color: #b91c1c;
+}

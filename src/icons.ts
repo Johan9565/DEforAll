@@ -100,6 +100,10 @@ import {
   Calendar,
   Globe,
   Maximize,
+  Crop,
+  Zap,
+  ChevronRight,
+  MoveHorizontal,
   type IconNode,
 } from 'lucide';
 
@@ -226,4 +230,9 @@ export {
   Calendar,
   Globe,
   Maximize,
+  Crop,
+  Zap,
+  ChevronRight,
+  MoveHorizontal,
+  type IconNode,
 };

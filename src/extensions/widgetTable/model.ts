@@ -59,6 +59,67 @@ export function emptyCell(): WidgetCell {
   };
 }
 
+export interface TableGridSlot {
+  row: number;
+  col: number;
+  cell: WidgetCell;
+  isOrigin: boolean;
+  gridRow: number;
+  gridCol: number;
+}
+
+export interface TableGridMap {
+  grid: (TableGridSlot | null)[][];
+  cellToGrid: Map<WidgetCell, { gridRow: number; gridCol: number }>;
+  numGridRows: number;
+  numGridCols: number;
+}
+
+export function buildGridMap(cells: WidgetCell[][]): TableGridMap {
+  const grid: (TableGridSlot | null)[][] = [];
+  const cellToGrid = new Map<WidgetCell, { gridRow: number; gridCol: number }>();
+
+  for (let r = 0; r < cells.length; r += 1) {
+    if (!grid[r]) grid[r] = [];
+    let gridCol = 0;
+    const row = cells[r] || [];
+
+    for (let c = 0; c < row.length; c += 1) {
+      const cell = row[c];
+      if (!cell) continue;
+      while (grid[r][gridCol] !== undefined) {
+        gridCol += 1;
+      }
+
+      const rSpan = Math.max(1, cell.rowspan || 1);
+      const cSpan = Math.max(1, cell.colspan || 1);
+      cellToGrid.set(cell, { gridRow: r, gridCol });
+
+      for (let dr = 0; dr < rSpan; dr += 1) {
+        const tr = r + dr;
+        if (!grid[tr]) grid[tr] = [];
+        for (let dc = 0; dc < cSpan; dc += 1) {
+          grid[tr][gridCol + dc] = {
+            row: r,
+            col: c,
+            cell,
+            isOrigin: dr === 0 && dc === 0,
+            gridRow: r,
+            gridCol,
+          };
+        }
+      }
+      gridCol += cSpan;
+    }
+  }
+
+  const numGridRows = grid.length;
+  const numGridCols = grid.reduce((max, r) => Math.max(max, r ? r.length : 0), 0);
+
+  return { grid, cellToGrid, numGridRows, numGridCols };
+}
+
+
 export function createWidgetTableAttrs(
   rows = 3,
   cols = 3,
@@ -134,14 +195,30 @@ export function normalizeAttrs(raw: Partial<WidgetTableAttrs> | null | undefined
     cells.push(row);
   }
 
-  const totalGridCols = cells.reduce((max, row) => {
-    const rowSpanSum = row.reduce((sum, cell) => sum + (cell.colspan || 1), 0);
-    return Math.max(max, rowSpanSum);
-  }, 1);
+  const gridMap = buildGridMap(cells);
+  const totalGridCols = Math.max(1, gridMap.numGridCols);
+
+  const validExistingWidths = (raw.colWidths || [])
+    .map(Number)
+    .filter((w) => Number.isFinite(w) && w > 0);
+  const fallbackColWidth =
+    validExistingWidths.length > 0
+      ? Math.max(
+          MIN_COL_WIDTH,
+          Math.round(
+            validExistingWidths.reduce((a, b) => a + b, 0) /
+              validExistingWidths.length,
+          ),
+        )
+      : DEFAULT_COL_WIDTH;
 
   const colWidths = Array.from({ length: totalGridCols }, (_, i) => {
-    const w = Number(raw.colWidths?.[i]);
-    return Number.isFinite(w) && w >= MIN_COL_WIDTH ? Math.round(w) : DEFAULT_COL_WIDTH;
+    const rawW = raw.colWidths?.[i];
+    const w = Number(rawW);
+    if (Number.isFinite(w) && w > 0) {
+      return Math.max(MIN_COL_WIDTH, Math.round(w));
+    }
+    return fallbackColWidth;
   });
 
   const rowHeights = Array.from({ length: rows }, (_, i) => {
@@ -152,7 +229,7 @@ export function normalizeAttrs(raw: Partial<WidgetTableAttrs> | null | undefined
   });
 
   const wrap: TableWrap =
-    raw.wrap === 'none' || raw.wrap === 'right' ? raw.wrap : 'left';
+    raw.wrap === 'left' || raw.wrap === 'right' ? raw.wrap : 'none';
 
   const marginRight =
     typeof raw.marginRight === 'number' && Number.isFinite(raw.marginRight) && raw.marginRight >= 0
@@ -336,14 +413,12 @@ export function parseTableElement(el: HTMLElement): WidgetTableAttrs {
     }),
   );
 
-  const totalGridCols = cells.reduce((max, row) => {
-    const rowSpanSum = row.reduce((sum, cell) => sum + (cell.colspan || 1), 0);
-    return Math.max(max, rowSpanSum);
-  }, 1);
+  const gridMap = buildGridMap(cells);
+  const totalGridCols = Math.max(1, gridMap.numGridCols);
   const colWidths = Array.from({ length: totalGridCols }, (_, i) => {
     const col = table.querySelectorAll('col')[i] as HTMLElement | undefined;
     const w = col ? parseInt(col.style.width || col.getAttribute('width') || '', 10) : NaN;
-    if (Number.isFinite(w) && w >= MIN_COL_WIDTH) return w;
+    if (Number.isFinite(w) && w > 0) return Math.max(MIN_COL_WIDTH, w);
     const first = rows[0]?.querySelectorAll('th, td')[i] as HTMLElement | undefined;
     const measuredWidth = first ? first.getBoundingClientRect().width : 0;
     const cw = measuredWidth > 0 ? measuredWidth : DEFAULT_COL_WIDTH;
@@ -356,10 +431,10 @@ export function parseTableElement(el: HTMLElement): WidgetTableAttrs {
   });
 
   const wrapAttr = (el.dataset.wrap || el.getAttribute('data-wrap')) as TableWrap | undefined;
-  const wrap: TableWrap = wrapAttr === 'left' || wrapAttr === 'right' ? wrapAttr : 'left';
+  const wrap: TableWrap = wrapAttr === 'left' || wrapAttr === 'right' ? wrapAttr : 'none';
   const marginRight = parseInt(el.style.marginRight || el.dataset.marginRight || '16', 10) || 16;
 
-  return normalizeAttrs({
+  const parsedAttrs = normalizeAttrs({
     cells,
     colWidths,
     rowHeights,
@@ -378,6 +453,12 @@ export function parseTableElement(el: HTMLElement): WidgetTableAttrs {
     fontFamily: (table.style.fontFamily || el.dataset.fontFamily || el.getAttribute('data-font-family') || '').replace(/['"]+/g, '') || null,
     fontSize: table.style.fontSize || el.dataset.fontSize || el.getAttribute('data-font-size') || null,
   });
+
+  const parsedW = tablePixelWidth(parsedAttrs);
+  if (parsedW > 624) {
+    return fitColWidthsToWidth(parsedAttrs, 624);
+  }
+  return parsedAttrs;
 }
 
 function escapeHtml(text: string): string {
@@ -647,16 +728,24 @@ export function fitColWidthsToWidth(attrs: WidgetTableAttrs, targetWidth: number
 
   const ratio = targetWidth / currentWidth;
   const cols = next.colWidths.length;
+  if (cols === 0) return next;
+
+  const minCol = Math.max(8, Math.min(MIN_COL_WIDTH, Math.floor(targetWidth / cols)));
   let allocated = 0;
 
   next.colWidths = next.colWidths.map((w, i) => {
     if (i === cols - 1) {
-      return Math.max(MIN_COL_WIDTH, targetWidth - allocated);
+      return Math.max(minCol, targetWidth - allocated);
     }
-    const nw = Math.max(MIN_COL_WIDTH, Math.round(w * ratio));
+    const nw = Math.max(minCol, Math.round(w * ratio));
     allocated += nw;
     return nw;
   });
+
+  const actualSum = next.colWidths.reduce((a, b) => a + b, 0);
+  if (actualSum !== targetWidth) {
+    next.colWidths[cols - 1] += (targetWidth - actualSum);
+  }
 
   return next;
 }

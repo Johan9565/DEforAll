@@ -32,6 +32,8 @@ import type {
 import { EMPTY_DOC } from './types';
 import './styles/document.css';
 import './styles/toolbar.css';
+import './styles/image-widget.css';
+import { optimizeImage } from './utils/imageOptimizer';
 
 export type {
   DocumentContent,
@@ -210,7 +212,7 @@ export class DocumentEditor {
           class: 'cde-page-content ProseMirror',
           style: `padding: ${this.metrics.marginPx}px; min-height: ${this.metrics.pageHeightPx}px; width: ${this.metrics.pageWidthPx}px; box-sizing: border-box;`,
         },
-        handlePaste: (_view, event) => {
+                handlePaste: (_view, event) => {
           if (this.restrictions.allowImages === false) {
             const items = event.clipboardData?.items;
             if (items) {
@@ -222,9 +224,25 @@ export class DocumentEditor {
               }
             }
             const html = event.clipboardData?.getData('text/html');
-            if (html && /<img\\s[^>]*>/i.test(html)) {
+            if (html && /<img\s[^>]*>/i.test(html)) {
               event.preventDefault();
               return true;
+            }
+          } else {
+            const items = event.clipboardData?.items;
+            if (items) {
+              for (let i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith('image/')) {
+                  const file = items[i].getAsFile();
+                  if (file) {
+                    event.preventDefault();
+                    optimizeImage(file).then((opt) => {
+                      this.editor.chain().focus().setImage({ src: opt.dataUrl }).run();
+                    });
+                    return true;
+                  }
+                }
+              }
             }
           }
           return false;
@@ -236,6 +254,20 @@ export class DocumentEditor {
               for (let i = 0; i < files.length; i++) {
                 if (files[i].type.startsWith('image/')) {
                   event.preventDefault();
+                  return true;
+                }
+              }
+            }
+          } else {
+            const files = event.dataTransfer?.files;
+            if (files && files.length > 0) {
+              for (let i = 0; i < files.length; i++) {
+                if (files[i].type.startsWith('image/')) {
+                  event.preventDefault();
+                  const file = files[i];
+                  optimizeImage(file).then((opt) => {
+                    this.editor.chain().focus().setImage({ src: opt.dataUrl }).run();
+                  });
                   return true;
                 }
               }
@@ -262,6 +294,8 @@ export class DocumentEditor {
         getEditor: () => this.editor,
         documentTitle: options.documentTitle ?? 'Documento',
         onPrint: () => this.print(),
+        getRestrictions: () => this.getRestrictions(),
+        setRestrictions: (restrictions) => this.setRestrictions(restrictions),
         pageLayout: {
           getPageSize: () => this.pageSize,
           setPageSize: (value) => this.setPageSize(value),
@@ -314,9 +348,9 @@ export class DocumentEditor {
 
     if (options.contextMenu ?? true) {
       this.contextMenu = new EditorContextMenu({
-        container: this.stageElement,
+        container: this.workspaceElement,
         getEditor: () => this.editor,
-        editable: this.editable,
+        editable: () => this.editable && this.restrictions.editable !== false,
         getRestrictions: () => this.restrictions,
       });
     }

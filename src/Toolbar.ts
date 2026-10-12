@@ -1,3 +1,4 @@
+import { optimizeImage } from './utils/imageOptimizer';
 import type { Editor } from '@tiptap/core';
 import {
   changeSelectionCase,
@@ -55,6 +56,11 @@ import {
   ZoomIn,
   ZoomOut,
   RectangleVertical,
+  Columns3,
+  LockOpen,
+  Baseline,
+  RectangleHorizontal,
+  type IconNode,
   SeparatorHorizontal,
   PanelLeftClose,
   Palette,
@@ -157,7 +163,7 @@ type TabId = 'home' | 'insert' | 'table' | 'layout' | 'options' | 'view';
 
 interface ToolbarAction {
   title: string;
-  label: string;
+  label: string | (() => string);
   className?: string;
   isActive?: () => boolean;
   isDisabled?: () => boolean;
@@ -1400,9 +1406,12 @@ export class Toolbar {
     }
   }
 
-  private insertImageSrc(url: string): void {
+  private async insertImageSrc(url: string): Promise<void> {
     const editor = this.editor();
     if (!editor) return;
+    const opt = await optimizeImage(url);
+    const finalUrl = opt.dataUrl;
+
     const tableStorage = editor.storage?.table as
       | { activeWidget?: { readCellsFromDom: () => void } }
       | undefined;
@@ -1413,12 +1422,12 @@ export class Toolbar {
       document.execCommand(
         'insertHTML',
         false,
-        `<img src="${url}" class="cde-wt__img" style="max-width:100%;height:auto;display:block;margin:0.25em 0;" />`,
+        `<img src="${finalUrl}" class="cde-wt__img" style="max-width:100%;height:auto;display:block;margin:0.25em 0;" />`,
       );
       tableStorage.activeWidget.readCellsFromDom();
       return;
     }
-    editor.chain().focus().setImage({ src: url }).run();
+    editor.chain().focus().setImage({ src: finalUrl }).run();
   }
 
   private buildInsertPanel(): HTMLElement {
@@ -1470,16 +1479,11 @@ export class Toolbar {
     fileInput.type = 'file';
     fileInput.accept = 'image/*';
     fileInput.className = 'hidden';
-    fileInput.addEventListener('change', () => {
+    fileInput.addEventListener('change', async () => {
       const file = fileInput.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const url = reader.result as string;
-        if (!url) return;
-        this.insertImageSrc(url);
-      };
-      reader.readAsDataURL(file);
+      const opt = await optimizeImage(file);
+      this.insertImageSrc(opt.dataUrl);
       fileInput.value = '';
     });
     mediaBody.appendChild(fileInput);
@@ -2093,15 +2097,9 @@ export class Toolbar {
         menuClassName: 'cde-tb-menu--list',
         build: (menu) => {
           menu.append(
-            this.createMenuItem('Eliminar fila', () =>
-              ed()?.chain().focus().deleteRow().run(),
-            ),
-            this.createMenuItem('Eliminar columna', () =>
-              ed()?.chain().focus().deleteColumn().run(),
-            ),
-            this.createMenuItem('Eliminar tabla', () =>
-              ed()?.chain().focus().deleteTable().run(),
-            ),
+            this.createMenuItem('Eliminar fila', () => ed()?.chain().focus().deleteRow().run(), Rows3),
+            this.createMenuItem('Eliminar columna', () => ed()?.chain().focus().deleteColumn().run(), Columns3),
+            this.createMenuItem('Eliminar tabla', () => ed()?.chain().focus().deleteTable().run(), Trash2),
           );
         },
       }),
@@ -2124,17 +2122,13 @@ export class Toolbar {
           menu.append(this.createMenuHeading('En columnas'));
           for (const cols of [2, 3, 4]) {
             menu.appendChild(
-              this.createMenuItem(`${cols} columnas`, () =>
-                ed()?.chain().focus().splitCell({ cols }).run(),
-              ),
+              this.createMenuItem(`${cols} columnas`, () => ed()?.chain().focus().splitCell({ cols }).run(), Columns3),
             );
           }
           menu.append(this.createMenuHeading('En filas'));
           for (const rows of [2, 3]) {
             menu.appendChild(
-              this.createMenuItem(`${rows} filas`, () =>
-                ed()?.chain().focus().splitCell({ rows }).run(),
-              ),
+              this.createMenuItem(`${rows} filas`, () => ed()?.chain().focus().splitCell({ rows }).run(), Rows3),
             );
           }
         },
@@ -2183,6 +2177,7 @@ export class Toolbar {
             menu.appendChild(
               this.createMenuItem(item.label, () =>
                 ed()?.chain().focus().setTableWrap(item.value).run(),
+                WrapText,
               ),
             );
           }
@@ -2244,9 +2239,9 @@ export class Toolbar {
             ['Pág. actual: Normal (2,54 cm)', () => this.applyMargins(this.currPage(), { top: 96, right: 96, bottom: 96, left: 96 })],
             ['Pág. actual: Estrecho (1,27 cm)', () => this.applyMargins(this.currPage(), { top: 48, right: 48, bottom: 48, left: 48 })],
             ['Pág. actual: Ancho (3,81 cm)', () => this.applyMargins(this.currPage(), { top: 144, right: 144, bottom: 144, left: 144 })],
-            ['Todo el doc: Normal (2,54 cm)', () => this.applyMargins('all', { top: 96, right: 96, bottom: 96, left: 96 })],
-            ['Todo el doc: Estrecho (1,27 cm)', () => this.applyMargins('all', { top: 48, right: 48, bottom: 48, left: 48 })],
-            ['Todo el doc: Ancho (3,81 cm)', () => this.applyMargins('all', { top: 144, right: 144, bottom: 144, left: 144 })],
+            ['Todo el doc: Normal (2,54 cm)', () => this.applyMargins('all', { top: 96, right: 96, bottom: 96, left: 96 }), PanelLeftClose],
+            ['Todo el doc: Estrecho (1,27 cm)', () => this.applyMargins('all', { top: 48, right: 48, bottom: 48, left: 48 }), PanelLeftClose],
+            ['Todo el doc: Ancho (3,81 cm)', () => this.applyMargins('all', { top: 144, right: 144, bottom: 144, left: 144 }), PanelLeftClose],
             ['Personalizar márgenes…', () => this.promptMargins()],
           ],
           () => !this.isAllowed('allowMarginEditing'),
@@ -2257,8 +2252,8 @@ export class Toolbar {
           [
             ['Pág. actual: Vertical', () => this.applyOrientation(this.currPage(), 'portrait')],
             ['Pág. actual: Horizontal', () => this.applyOrientation(this.currPage(), 'landscape')],
-            ['Todo el doc: Vertical', () => this.applyOrientation('all', 'portrait')],
-            ['Todo el doc: Horizontal', () => this.applyOrientation('all', 'landscape')],
+            ['Todo el doc: Vertical', () => this.applyOrientation('all', 'portrait'), RectangleVertical],
+            ['Todo el doc: Horizontal', () => this.applyOrientation('all', 'landscape'), RectangleHorizontal],
           ],
           () => !this.isAllowed('allowPageSettings'),
           lucideSvg(RectangleVertical),
@@ -2266,7 +2261,7 @@ export class Toolbar {
         this.createLayoutMenu(
           'Tamaño',
           [
-            ['Carta (Letter)', () => this.pageLayout!.setPageSize('letter')],
+            ['Carta (Letter)', () => this.pageLayout!.setPageSize('letter'), FileText],
             ['A4 (21,0 × 29,7 cm)', () => this.pageLayout!.setPageSize('a4')],
           ],
           () => !this.isAllowed('allowPageSettings'),
@@ -2275,9 +2270,9 @@ export class Toolbar {
         this.createLayoutMenu(
           'Columnas',
           [
-            ['Una columna', () => this.pageLayout!.setColumns(1)],
-            ['Dos columnas', () => this.pageLayout!.setColumns(2)],
-            ['Tres columnas', () => this.pageLayout!.setColumns(3)],
+            ['Una columna', () => this.pageLayout!.setColumns(1), Columns2],
+            ['Dos columnas', () => this.pageLayout!.setColumns(2), Columns2],
+            ['Tres columnas', () => this.pageLayout!.setColumns(3), Columns3],
           ],
           () => !this.isAllowed('allowPageSettings'),
           lucideSvg(Columns2),
@@ -2413,7 +2408,10 @@ export class Toolbar {
     const readOnlyBtn = this.createButton(
       {
         title: 'Modo Solo Lectura: bloquea cualquier edición o cambio en el documento',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(Lock)}</span><span class="text-[10px] font-medium leading-none">Solo lectura</span>`,
+        label: () =>
+          r().editable === false
+            ? `<span class="cde-tb-btn__face text-amber-700">${lucideSvg(Lock, 14)}</span><span class="text-[10px] font-semibold leading-none text-amber-800">Solo lectura</span>`
+            : `<span class="cde-tb-btn__face">${lucideSvg(LockOpen, 14)}</span><span class="text-[10px] font-medium leading-none">Edición libre</span>`,
         isActive: () => r().editable === false,
         run: () => {
           const cur = r().editable !== false;
@@ -2435,7 +2433,10 @@ export class Toolbar {
     const noImgBtn = this.createButton(
       {
         title: 'Bloquear imágenes: no permite insertar imágenes, ni pegarlas ni arrastrarlas',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(ImageOff)}</span><span class="text-[10px]">Sin imágenes</span>`,
+        label: () =>
+          r().allowImages === false
+            ? `<span class="cde-tb-btn__face text-red-600">${lucideSvg(ImageOff, 14)}</span><span class="text-[10px] font-semibold text-red-700">Sin imágenes</span>`
+            : `<span class="cde-tb-btn__face">${lucideSvg(LucideImage, 14)}</span><span class="text-[10px]">Permitir img</span>`,
         isActive: () => r().allowImages === false,
         run: () => {
           const cur = r().allowImages !== false;
@@ -2449,7 +2450,10 @@ export class Toolbar {
     const noTablesBtn = this.createButton(
       {
         title: 'Bloquear tablas: impide insertar y editar tablas en el documento',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(LucideTable)}</span><span class="text-[10px]">Sin tablas</span>`,
+        label: () =>
+          r().allowTables === false
+            ? `<span class="cde-tb-btn__face text-red-600">${lucideSvg(LucideTable, 14)}</span><span class="text-[10px] font-semibold text-red-700">Sin tablas</span>`
+            : `<span class="cde-tb-btn__face">${lucideSvg(LucideTable, 14)}</span><span class="text-[10px]">Permitir tablas</span>`,
         isActive: () => r().allowTables === false,
         run: () => {
           const cur = r().allowTables !== false;
@@ -2463,7 +2467,10 @@ export class Toolbar {
     const noLinksBtn = this.createButton(
       {
         title: 'Bloquear vínculos: impide insertar o editar enlaces en el documento',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(Unlink)}</span><span class="text-[10px]">Sin vínculos</span>`,
+        label: () =>
+          r().allowLinks === false
+            ? `<span class="cde-tb-btn__face text-red-600">${lucideSvg(Unlink, 14)}</span><span class="text-[10px] font-semibold text-red-700">Sin vínculos</span>`
+            : `<span class="cde-tb-btn__face">${lucideSvg(LucideLink, 14)}</span><span class="text-[10px]">Permitir vínculos</span>`,
         isActive: () => r().allowLinks === false,
         run: () => {
           const cur = r().allowLinks !== false;
@@ -2486,7 +2493,10 @@ export class Toolbar {
     const noMarginsBtn = this.createButton(
       {
         title: 'Bloquear márgenes: desactiva los manejadores de regla y menús de márgenes',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(PanelLeftClose)}</span><span class="text-[10px]">Bloquear márgenes</span>`,
+        label: () =>
+          r().allowMarginEditing === false
+            ? `<span class="cde-tb-btn__face text-red-600">${lucideSvg(PanelLeftClose, 14)}</span><span class="text-[10px] font-semibold text-red-700">Márgenes fijos</span>`
+            : `<span class="cde-tb-btn__face">${lucideSvg(Sliders, 14)}</span><span class="text-[10px]">Márgenes libres</span>`,
         isActive: () => r().allowMarginEditing === false,
         run: () => {
           const cur = r().allowMarginEditing !== false;
@@ -2500,7 +2510,10 @@ export class Toolbar {
     const noPageSettingsBtn = this.createButton(
       {
         title: 'Bloquear ajustes de página: no permite cambiar orientación, tamaño ni columnas',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(FileText)}</span><span class="text-[10px]">Bloquear config. pág.</span>`,
+        label: () =>
+          r().allowPageSettings === false
+            ? `<span class="cde-tb-btn__face text-red-600">${lucideSvg(FileText, 14)}</span><span class="text-[10px] font-semibold text-red-700">Pág. fija</span>`
+            : `<span class="cde-tb-btn__face">${lucideSvg(FileText, 14)}</span><span class="text-[10px]">Pág. configurable</span>`,
         isActive: () => r().allowPageSettings === false,
         run: () => {
           const cur = r().allowPageSettings !== false;
@@ -2514,7 +2527,10 @@ export class Toolbar {
     const noFormattingBtn = this.createButton(
       {
         title: 'Bloquear formato: desactiva negrita, cursiva, fuentes, colores y estilos',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(RemoveFormatting)}</span><span class="text-[10px]">Bloquear formato</span>`,
+        label: () =>
+          r().allowFormatting === false
+            ? `<span class="cde-tb-btn__face text-red-600">${lucideSvg(RemoveFormatting, 14)}</span><span class="text-[10px] font-semibold text-red-700">Sin formato</span>`
+            : `<span class="cde-tb-btn__face">${lucideSvg(Baseline, 14)}</span><span class="text-[10px]">Formato libre</span>`,
         isActive: () => r().allowFormatting === false,
         run: () => {
           const cur = r().allowFormatting !== false;
@@ -2537,7 +2553,7 @@ export class Toolbar {
     const resetBtn = this.createButton(
       {
         title: 'Restablecer todas las políticas: permitir edición total sin restricciones',
-        label: `<span class="cde-tb-btn__face">${lucideSvg(RotateCcw)}</span><span class="text-[10px] font-medium">Permitir todo</span>`,
+        label: `<span class="cde-tb-btn__face text-blue-600">${lucideSvg(RotateCcw, 14)}</span><span class="text-[10px] font-semibold text-blue-700">Permitir todo</span>`,
         run: () => {
           this.setRestrictionsProp?.({
             editable: true,
@@ -2611,7 +2627,7 @@ export class Toolbar {
 
   private createLayoutMenu(
     label: string,
-    items: Array<[string, () => void]>,
+    items: Array<[string, () => void, IconNode?]>,
     isDisabled?: () => boolean,
     iconSvg?: string,
   ): HTMLElement {
@@ -2627,13 +2643,13 @@ export class Toolbar {
     menu.className =
       'cde-combo__menu cde-tb-menu absolute left-0 top-[calc(100%+2px)] z-50 hidden min-w-full rounded-md border border-neutral-200 bg-white py-1 shadow-lg';
     menu.setAttribute('role', 'menu');
-    for (const [itemLabel, run] of items) {
+    for (const [itemLabel, run, itemIcon] of items) {
       menu.appendChild(
         this.createMenuItem(itemLabel, () => {
           run();
           this.closeCombos();
           this.syncState();
-        }),
+        }, itemIcon),
       );
     }
     trigger.addEventListener('mousedown', (e) => e.preventDefault());
@@ -3321,12 +3337,16 @@ export class Toolbar {
     return root;
   }
 
-  private createMenuItem(label: string, run: () => void): HTMLElement {
+  private createMenuItem(label: string, run: () => void, icon?: IconNode): HTMLElement {
     const item = document.createElement('button');
     item.type = 'button';
     item.setAttribute('role', 'menuitem');
     item.className = 'cde-tb-menu__item';
-    item.textContent = label;
+    if (icon) {
+      item.innerHTML = `<span class="cde-tb-menu__icon inline-flex items-center justify-center shrink-0 w-3.5 h-3.5 mr-1.5 text-neutral-600">${lucideSvg(icon, 13)}</span><span>${label}</span>`;
+    } else {
+      item.textContent = label;
+    }
     item.addEventListener('mousedown', (e) => e.preventDefault());
     item.addEventListener('click', () => {
       run();
@@ -3473,7 +3493,7 @@ export class Toolbar {
       : className;
     button.title = action.title;
     button.setAttribute('aria-label', action.title);
-    button.innerHTML = action.label;
+    button.innerHTML = typeof action.label === 'function' ? action.label() : action.label;
 
     button.addEventListener('mousedown', (event) => {
       event.preventDefault();
@@ -3508,6 +3528,9 @@ export class Toolbar {
     for (const [button, action] of this.buttons) {
       const active = action.isActive?.() ?? false;
       const disabled = !hasEditor || (action.isDisabled?.() ?? false);
+      if (typeof action.label === 'function') {
+        button.innerHTML = action.label();
+      }
       button.classList.toggle('cde-tb-btn--active', active);
       button.classList.toggle('bg-neutral-300/90', active);
       button.classList.toggle('ring-1', active);
@@ -3561,5 +3584,6 @@ export class Toolbar {
       const sync = (el as HTMLElement & { __syncColor?: () => void }).__syncColor;
       sync?.();
     }
+    this.updateRestrictionsBadge();
   }
 }

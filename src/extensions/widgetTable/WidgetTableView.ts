@@ -6,6 +6,7 @@ import type { NodeView } from '@tiptap/pm/view';
 import type { PageSize } from '../../types';
 import { measurePageMetrics, type PageMetrics } from '../pageMetrics';
 import {
+  buildGridMap,
   cloneAttrs,
   emptyCell,
   evaluateTableFormulas,
@@ -139,6 +140,7 @@ export class WidgetTableView implements NodeView {
 
   private updateInPlace(data: WidgetTableAttrs): void {
     const width = tablePixelWidth(data);
+    const isWrapped = data.wrap === 'left' || data.wrap === 'right';
     this.dom.style.width = `${width}px`;
     this.dom.style.marginRight = `${data.marginRight ?? 16}px`;
     this.dom.dataset.wrap = data.wrap || 'none';
@@ -150,7 +152,14 @@ export class WidgetTableView implements NodeView {
     else delete this.dom.dataset.tableContinuation;
     if (data.hasRepeatedHeader) this.dom.dataset.tableRepeatedHeader = "true";
     else delete this.dom.dataset.tableRepeatedHeader;
-    this.grid.style.width = `${width}px`;
+    if (!isWrapped) {
+      this.grid.style.width = '100%';
+      this.grid.style.maxWidth = '100%';
+    } else {
+      const maxW = (this.getPageMetrics()?.bodyWidthPx || 624) - (data.marginRight ?? 16);
+      this.grid.style.width = `${Math.min(maxW, width)}px`;
+      this.grid.style.maxWidth = '100%';
+    }
     this.grid.style.borderStyle = data.borderStyle || '';
     this.grid.style.borderColor = data.borderColor || '';
     this.grid.style.borderWidth = data.borderWidth != null ? `${data.borderWidth}px` : '';
@@ -257,7 +266,7 @@ export class WidgetTableView implements NodeView {
         (e) => e.name === 'pagePagination',
       );
       const storage = ext?.storage as { requestRefresh?: () => void } | undefined;
-      storage?.requestRefresh?.();
+      (storage?.requestRefresh || (storage as any)?.scheduleRefresh)?.();
     } catch {
       // ignore
     }
@@ -396,6 +405,7 @@ export class WidgetTableView implements NodeView {
 
   private render(data: WidgetTableAttrs): void {
     const width = tablePixelWidth(data);
+    const isWrapped = data.wrap === 'left' || data.wrap === 'right';
     this.dom.style.width = `${width}px`;
     this.dom.style.marginRight = `${data.marginRight ?? 16}px`;
     this.dom.dataset.wrap = data.wrap || 'none';
@@ -407,7 +417,14 @@ export class WidgetTableView implements NodeView {
     else delete this.dom.dataset.tableContinuation;
     if (data.hasRepeatedHeader) this.dom.dataset.tableRepeatedHeader = "true";
     else delete this.dom.dataset.tableRepeatedHeader;
-    this.grid.style.width = `${width}px`;
+    if (!isWrapped) {
+      this.grid.style.width = '100%';
+      this.grid.style.maxWidth = '100%';
+    } else {
+      const maxW = (this.getPageMetrics()?.bodyWidthPx || 624) - (data.marginRight ?? 16);
+      this.grid.style.width = `${Math.min(maxW, width)}px`;
+      this.grid.style.maxWidth = '100%';
+    }
     this.grid.style.borderStyle = data.borderStyle || '';
     this.grid.style.borderColor = data.borderColor || '';
     this.grid.style.borderWidth = data.borderWidth != null ? `${data.borderWidth}px` : '';
@@ -481,7 +498,6 @@ export class WidgetTableView implements NodeView {
       ({ row, col }) => col < (data.cells[row]?.length ?? 0),
     );
     this.paintCellSelection();
-    this.requestPaginationRefresh();
     this.layoutHandles(data);
     this.refreshMoveButtons();
   }
@@ -498,9 +514,10 @@ export class WidgetTableView implements NodeView {
     const rows = Array.from(this.grid.querySelectorAll('tr'));
     if (rows.length === 0) return;
 
+    const gridMap = buildGridMap(data.cells);
+
     // Per-cell border drag handles
     rows.forEach((tr, r) => {
-      let currentVirtualCol = 0;
       const cells = Array.from(tr.querySelectorAll('th, td'));
       cells.forEach((cellEl, c) => {
         const cellRect = cellEl.getBoundingClientRect();
@@ -527,11 +544,11 @@ export class WidgetTableView implements NodeView {
 
         const cellData = data.cells[r]?.[c];
         const span = cellData?.colspan || 1;
-        currentVirtualCol += span;
-        const targetColIdx = currentVirtualCol - 1;
-
         const rSpan = cellData?.rowspan || 1;
-        const targetRowIdx = r + rSpan - 1;
+
+        const cellInfo = cellData ? gridMap.cellToGrid.get(cellData) : null;
+        const targetColIdx = cellInfo ? cellInfo.gridCol + span - 1 : c + span - 1;
+        const targetRowIdx = cellInfo ? cellInfo.gridRow + rSpan - 1 : r + rSpan - 1;
 
         // Vertical right border handle (scoped strictly to this cell's height and vertical span)
         const colHandle = document.createElement('div');

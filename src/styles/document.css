@@ -288,28 +288,41 @@
   @apply bg-gray-50 font-semibold text-left text-gray-800;
 }
 
-/* Atomic table widget & adjacent text flow (tabla1 - texto - tabla2) */
+/* Atomic table widget: default full-width block with strict boundary enforcement */
 .cde-wt {
   position: relative;
-  display: inline-block;
-  vertical-align: top;
-  width: fit-content;
-  max-width: 100%;
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
   height: fit-content;
-  box-sizing: border-box;
-  margin: 0.35em 0.75rem 0.5em 0;
+  box-sizing: border-box !important;
+  margin: 1rem 0 !important;
+  clear: both !important;
   overflow: visible;
 }
 
-.cde-page-content .cde-wt + p,
-.cde-page-content p:has(+ .cde-wt),
-.cde-page-sheet .ProseMirror .cde-wt + p,
-.cde-page-sheet .ProseMirror p:has(+ .cde-wt) {
-  display: inline-block;
-  vertical-align: top;
-  min-width: 2.5rem;
-  max-width: 100%;
-  margin: 0.35em 0.75rem 0.5em 0;
+.cde-wt--wrap-none {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  clear: both !important;
+  margin: 1rem 0 !important;
+}
+
+.cde-wt--wrap-left {
+  display: inline-block !important;
+  float: left !important;
+  clear: left !important;
+  margin: 0.5rem 1.5rem 0.5rem 0 !important;
+  max-width: calc(100% - 2rem) !important;
+}
+
+.cde-wt--wrap-right {
+  display: inline-block !important;
+  float: right !important;
+  clear: right !important;
+  margin: 0.5rem 0 0.5rem 1.5rem !important;
+  max-width: calc(100% - 2rem) !important;
 }
 
 .cde-page-content::after,
@@ -1223,13 +1236,21 @@
 }
 
 .cde-page-break {
-  display: block;
-  width: 100%;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-select: none;
-  box-sizing: border-box;
+  display: block !important;
+  width: 100% !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  box-sizing: border-box !important;
   background: transparent !important;
+  clear: both !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+.cde-page-break + * {
+  margin-top: 0 !important;
 }
 
 .cde-page-break--list {
@@ -1237,6 +1258,11 @@
   margin: 0 !important;
   padding: 0 !important;
   border: none !important;
+  clear: both !important;
+}
+
+.cde-page-break--list + * {
+  margin-top: 0 !important;
 }
 
 .cde-wt__page-spacer {
@@ -1261,4 +1287,22 @@
   user-select: none;
   pointer-events: none;
   opacity: 0.95;
+}
+
+/* Readonly Mode Suppressions */
+.cde-readonly {
+  user-select: text;
+}
+
+.cde-readonly .cde-img-handle,
+.cde-readonly .cde-img-quick-bar,
+.cde-readonly .cde-img-filter-popover,
+.cde-readonly .cde-wt__handles,
+.cde-readonly .cde-wt__chrome,
+.cde-readonly .cde-wt__col-handle,
+.cde-readonly .cde-wt__row-handle,
+.cde-readonly .cde-wt__margin-handle,
+.cde-readonly .cde-ruler__handle {
+  display: none !important;
+  pointer-events: none !important;
 }

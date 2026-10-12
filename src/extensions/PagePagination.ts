@@ -19,6 +19,7 @@ export type PagePaginationStorage = {
   pageCount: number;
   metrics: PageMetrics | null;
   scheduleRefresh: (() => void) | null;
+  requestRefresh: (() => void) | null;
   applyLayoutSync: (() => void) | null;
   setGapPx: ((gap: number) => void) | null;
 };
@@ -73,15 +74,10 @@ export const PagePagination = Extension.create<
       pageCount: 1,
       metrics: null,
       scheduleRefresh: null,
+      requestRefresh: null,
       applyLayoutSync: null,
       setGapPx: null,
     };
-  },
-
-  onTransaction({ transaction }) {
-    if (transaction.docChanged && !transaction.getMeta(paginationMetaKey)) {
-      this.storage.scheduleRefresh?.();
-    }
   },
 
   addProseMirrorPlugins() {
@@ -109,6 +105,7 @@ export const PagePagination = Extension.create<
           let raf = 0;
           let lastSignature = '';
           let isApplying = false;
+          let ro: ResizeObserver | null = null;
 
           const stageEl = () =>
             view.dom.closest<HTMLElement>('.cde-document-stage') ||
@@ -149,28 +146,21 @@ export const PagePagination = Extension.create<
               const i = sheetsCache.length;
               const m = getPageMetrics(i);
               const gap = extension.options.gapPx ?? 24;
-              if (i === 0) {
-                sheetsCache.push({
-                  pageIndex: 0,
-                  sheetTop: 0,
-                  contentTop: 0,
-                  contentBottom: m.bodyHeightPx,
-                  sheetBottom: m.pageHeightPx,
-                  nextSheetTop: m.pageHeightPx + gap,
-                  metrics: m,
-                });
-              } else {
-                const prev = sheetsCache[i - 1];
-                sheetsCache.push({
-                  pageIndex: i,
-                  sheetTop: prev.nextSheetTop,
-                  contentTop: prev.nextSheetTop,
-                  contentBottom: prev.nextSheetTop + m.bodyHeightPx,
-                  sheetBottom: prev.nextSheetTop + m.pageHeightPx,
-                  nextSheetTop: prev.nextSheetTop + m.pageHeightPx + gap,
-                  metrics: m,
-                });
-              }
+              const sheetTop = i === 0 ? 0 : sheetsCache[i - 1].nextSheetTop;
+              const contentTop = sheetTop + m.margins.top;
+              const contentBottom = contentTop + m.bodyHeightPx;
+              const sheetBottom = sheetTop + m.pageHeightPx;
+              const nextSheetTop = sheetBottom + gap;
+
+              sheetsCache.push({
+                pageIndex: i,
+                sheetTop,
+                contentTop,
+                contentBottom,
+                sheetBottom,
+                nextSheetTop,
+                metrics: m,
+              });
             }
             return sheetsCache[idx];
           };
@@ -280,117 +270,83 @@ export const PagePagination = Extension.create<
               isInsideList: boolean;
             }> = [];
 
-            let currentY = 0;
-            let prevMarginBottom = 0;
-            let prevDomEl: HTMLElement | null = null;
-            let currentSheetIndex = 0;
+            const pmTop = view.dom.getBoundingClientRect().top;
+            const allBreaks = Array.from(view.dom.querySelectorAll('.cde-page-break')) as HTMLElement[];
 
-            const isInline = (el: HTMLElement | null): boolean => {
-              if (!el) return false;
-              const d = window.getComputedStyle(el).display;
-              return d.includes('inline');
-            };
+            let breakIdx = 0;
+            let precedingBreaksHeight = 0;
+            let cumulativeSpacerShift = 0;
+            let currentSheetIndex = 0;
 
             for (let i = 0; i < units.length; i += 1) {
               const unit = units[i];
               const domEl = unit.domEl;
 
-              const style = window.getComputedStyle(domEl);
-              const marginTop = parseFloat(style.marginTop) || 0;
-              let marginBottom = parseFloat(style.marginBottom) || 0;
-              if (unit.isInsideList) {
-                const innerP = domEl.querySelector('p');
-                if (innerP) {
-                  const pMb = parseFloat(window.getComputedStyle(innerP).marginBottom) || 0;
-                  marginBottom = Math.max(marginBottom, pMb);
-                }
+              while (
+                breakIdx < allBreaks.length &&
+                (allBreaks[breakIdx].compareDocumentPosition(domEl) & Node.DOCUMENT_POSITION_FOLLOWING)
+              ) {
+                precedingBreaksHeight += allBreaks[breakIdx].offsetHeight;
+                breakIdx += 1;
               }
 
-              // Margins collapse vertically between block siblings, but NOT on inline-block elements
-              const effectiveMarginTop =
-                i === 0
-                  ? marginTop
-                  : isInline(domEl) || isInline(prevDomEl)
-                  ? prevMarginBottom + marginTop
-                  : Math.max(prevMarginBottom, marginTop);
-              currentY += effectiveMarginTop;
+              const currentTop = Math.round(domEl.getBoundingClientRect().top - pmTop);
+              const naturalTop = Math.max(0, currentTop - precedingBreaksHeight);
 
-              while (currentY >= getSheetGeometry(currentSheetIndex).nextSheetTop) {
-                currentSheetIndex += 1;
+              let unitHeight = domEl.offsetHeight;
+              if (unit.isTable) {
+                const tableEl = domEl.tagName === 'TABLE' ? (domEl as HTMLTableElement) : domEl.querySelector<HTMLTableElement>('table');
+                if (tableEl && tableEl.offsetHeight > unitHeight) {
+                  unitHeight = tableEl.offsetHeight;
+                }
+              } else {
+                const images = domEl.querySelectorAll<HTMLElement>('img, .cde-image-box, .cde-image-container');
+                images.forEach((img) => {
+                  const bottom = img.offsetTop + img.offsetHeight;
+                  if (bottom > unitHeight) unitHeight = bottom;
+                });
               }
 
               let currentSheet = getSheetGeometry(currentSheetIndex);
+              let placedTop = naturalTop + cumulativeSpacerShift;
+              let placedBottom = placedTop + unitHeight;
 
-              if (unit.isTable) {
-                const viewInstance = (domEl as unknown as {
-                  __view?: { layoutPagination?: (top: number, m: PageMetrics) => number };
-                }).__view;
-
-                const firstTr = domEl.querySelector<HTMLElement>(
-                  'tbody > tr:not(.cde-wt__page-spacer):not(.cde-wt__repeated-header)',
-                );
-                const secondTr = domEl.querySelectorAll<HTMLElement>(
-                  'tbody > tr:not(.cde-wt__page-spacer):not(.cde-wt__repeated-header)',
-                )[1];
-                const minH = (firstTr?.offsetHeight || 30) + (secondTr?.offsetHeight || 30);
-
-                if (currentY > currentSheet.contentTop && currentY + minH > currentSheet.contentBottom) {
-                  const remainingOnSheet = Math.max(0, currentSheet.contentBottom - (currentY - effectiveMarginTop));
-                  const nextSheet = getSheetGeometry(currentSheetIndex + 1);
-                  const spacerHeight = remainingOnSheet + currentSheet.metrics.margins.bottom + gapPx + nextSheet.metrics.margins.top;
-
-                  breaks.push({
-                    pos: unit.pos,
-                    spacerHeight,
-                    pageIndex: currentSheetIndex + 1,
-                    isInsideList: false,
-                  });
-
-                  currentSheetIndex += 1;
-                  currentSheet = nextSheet;
-                  currentY = currentSheet.contentTop;
-                }
-
-                if (viewInstance?.layoutPagination) {
-                  currentY = viewInstance.layoutPagination(currentY, currentSheet.metrics);
-                  while (currentY >= getSheetGeometry(currentSheetIndex).nextSheetTop) {
-                    currentSheetIndex += 1;
-                  }
-                  currentSheet = getSheetGeometry(currentSheetIndex);
-                } else {
-                  currentY += domEl.offsetHeight;
-                }
-                prevMarginBottom = marginBottom;
-                prevDomEl = domEl;
-              } else {
-                const h = domEl.offsetHeight;
-                if (currentY > currentSheet.contentTop && currentY + h > currentSheet.contentBottom) {
-                  const remainingOnSheet = Math.max(0, currentSheet.contentBottom - (currentY - effectiveMarginTop));
-                  const nextSheet = getSheetGeometry(currentSheetIndex + 1);
-                  const spacerHeight = remainingOnSheet + currentSheet.metrics.margins.bottom + gapPx + nextSheet.metrics.margins.top;
-
-                  breaks.push({
-                    pos: unit.pos,
-                    spacerHeight,
-                    pageIndex: currentSheetIndex + 1,
-                    isInsideList: unit.isInsideList,
-                  });
-
-                  currentSheetIndex += 1;
-                  currentSheet = nextSheet;
-                  currentY = currentSheet.contentTop + h;
-                  prevMarginBottom = 0;
-                  prevDomEl = null;
-                } else {
-                  currentY += h;
-                  prevMarginBottom = marginBottom;
-                  prevDomEl = domEl;
+              // Heading orphan prevention: heading needs its height plus at least 48px of following content
+              let minNeeded = unitHeight;
+              if (unit.node.type.name === 'heading') {
+                const nextUnit = units[i + 1];
+                if (nextUnit) {
+                  minNeeded += Math.min(nextUnit.domEl.offsetHeight || 40, 50);
                 }
               }
-            }
 
-            while (currentY > getSheetGeometry(currentSheetIndex).sheetBottom) {
-              currentSheetIndex += 1;
+              const overflowsCurrent =
+                placedTop + minNeeded > currentSheet.contentBottom &&
+                placedTop > currentSheet.contentTop;
+
+              if (overflowsCurrent) {
+                currentSheetIndex += 1;
+                const nextSheet = getSheetGeometry(currentSheetIndex);
+
+                const newShift = Math.max(cumulativeSpacerShift, nextSheet.contentTop - naturalTop);
+                const spacerHeight = Math.max(1, Math.round(newShift - cumulativeSpacerShift));
+
+                breaks.push({
+                  pos: unit.pos,
+                  spacerHeight,
+                  pageIndex: currentSheetIndex,
+                  isInsideList: unit.isInsideList,
+                });
+
+                cumulativeSpacerShift = newShift;
+                placedTop = naturalTop + cumulativeSpacerShift;
+                placedBottom = placedTop + unitHeight;
+                currentSheet = nextSheet;
+              }
+
+              while (placedBottom > getSheetGeometry(currentSheetIndex).sheetBottom) {
+                currentSheetIndex += 1;
+              }
             }
             const pageCount = Math.max(1, currentSheetIndex + 1);
             extension.storage.pageCount = pageCount;
@@ -441,6 +397,7 @@ export const PagePagination = Extension.create<
           };
 
           extension.storage.scheduleRefresh = schedule;
+          extension.storage.requestRefresh = schedule;
           extension.storage.applyLayoutSync = () => {
             extension.storage.metrics = null;
             applyLayout();
@@ -450,6 +407,19 @@ export const PagePagination = Extension.create<
             extension.storage.metrics = null;
             applyLayout();
           };
+
+          if (typeof ResizeObserver !== 'undefined' && view.dom) {
+            ro = new ResizeObserver(() => {
+              schedule();
+            });
+            ro.observe(view.dom);
+          }
+
+          if (typeof document !== 'undefined' && document.fonts?.ready) {
+            document.fonts.ready.then(() => {
+              schedule();
+            });
+          }
 
           requestAnimationFrame(() => {
             applyLayout();
@@ -463,7 +433,10 @@ export const PagePagination = Extension.create<
             },
             destroy() {
               cancelAnimationFrame(raf);
+              ro?.disconnect();
+              ro = null;
               extension.storage.scheduleRefresh = null;
+              extension.storage.requestRefresh = null;
               extension.storage.applyLayoutSync = null;
               extension.storage.setGapPx = null;
             },

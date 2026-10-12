@@ -6,6 +6,12 @@ import dts from 'vite-plugin-dts';
 const rootDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  server: {
+    port: 5190,
+  },
+  preview: {
+    port: 5190,
+  },
   plugins: [
     dts({
       insertTypesEntry: true,

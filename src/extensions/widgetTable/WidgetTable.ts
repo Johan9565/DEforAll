@@ -6,6 +6,7 @@ import {
   applyTableStylePreset,
   attrsToHtml,
   autoFitColWidths,
+  buildGridMap,
   cleanCellFontStyles,
   cloneAttrs,
   createWidgetTableAttrs,
@@ -179,8 +180,7 @@ function usableWidth(
 
   const isWrapped = attrs?.wrap === 'left' || attrs?.wrap === 'right';
   const mr = isWrapped ? (attrs?.marginRight ?? 16) : 0;
-  const numCols = Math.max(1, attrs?.colWidths?.length || 1);
-  return Math.max(MIN_COL_WIDTH * numCols, canvas - mr);
+  return Math.max(60, canvas - mr);
 }
 
 function activeCell(editor: { storage: Record<string, unknown> }): { row: number; col: number } {
@@ -460,7 +460,7 @@ export const WidgetTable = Node.create({
         if (dispatch) {
           const { row } = activeCell(editor);
           const next = cloneAttrs(found.attrs);
-          const cols = next.cells[0]?.length ?? 1;
+          const cols = Math.max(1, buildGridMap(next.cells).numGridCols);
           const at = Math.min(row + 1, next.cells.length);
           next.cells.splice(at, 0, Array.from({ length: cols }, () => emptyCell()));
           next.rowHeights.splice(at, 0, null);
@@ -476,7 +476,7 @@ export const WidgetTable = Node.create({
         if (dispatch) {
           const { row } = activeCell(editor);
           const next = cloneAttrs(found.attrs);
-          const cols = next.cells[0]?.length ?? 1;
+          const cols = Math.max(1, buildGridMap(next.cells).numGridCols);
           const at = Math.max(0, row);
           next.cells.splice(at, 0, Array.from({ length: cols }, () => emptyCell()));
           next.rowHeights.splice(at, 0, null);
@@ -648,100 +648,192 @@ export const WidgetTable = Node.create({
           const targets = getSelectedCells(editor);
           const next = cloneAttrs(found.attrs);
 
+          const targetCells = targets
+            .map(({ row, col }) => next.cells[row]?.[col])
+            .filter((c): c is WidgetCell => Boolean(c));
+
+          if (targetCells.length === 0) return true;
+
+          const findCellPos = (cells: WidgetCell[][], target: WidgetCell): { row: number; col: number } | null => {
+            for (let r = 0; r < cells.length; r += 1) {
+              const row = cells[r];
+              if (!row) continue;
+              const c = row.indexOf(target);
+              if (c !== -1) return { row: r, col: c };
+            }
+            return null;
+          };
+
           if (options?.rows && options.rows >= 2) {
             const rowsCount = options.rows;
-            const sortedTargets = [...targets].sort((a, b) => b.row - a.row);
+            const initialMap = buildGridMap(next.cells);
+            targetCells.sort((a, b) => {
+              const infoA = initialMap.cellToGrid.get(a);
+              const infoB = initialMap.cellToGrid.get(b);
+              return (infoB?.gridRow ?? 0) - (infoA?.gridRow ?? 0);
+            });
 
-            sortedTargets.forEach(({ row, col }) => {
-              const cell = next.cells[row]?.[col];
-              if (!cell) return;
+            for (const targetCell of targetCells) {
+              const pos = findCellPos(next.cells, targetCell);
+              if (!pos) continue;
 
-              const currentSpan = Math.max(1, cell.rowspan || 1);
+              const gridMap = buildGridMap(next.cells);
+              const info = gridMap.cellToGrid.get(targetCell);
+              if (!info) continue;
+              const { gridRow: startGridRow, gridCol: startGridCol } = info;
+              const rSpan = Math.max(1, targetCell.rowspan || 1);
 
-              if (currentSpan % rowsCount === 0) {
-                const subSpan = currentSpan / rowsCount;
-                cell.rowspan = subSpan;
+              if (rSpan >= rowsCount && rSpan % rowsCount === 0) {
+                const subSpan = rSpan / rowsCount;
+                targetCell.rowspan = subSpan;
                 for (let k = 1; k < rowsCount; k += 1) {
-                  const targetRowIdx = row + k * subSpan;
-                  if (next.cells[targetRowIdx]) {
-                    next.cells[targetRowIdx]!.splice(col, 0, {
-                      ...emptyCell(),
-                      colspan: cell.colspan || 1,
-                      rowspan: subSpan,
-                    });
+                  const targetRowIdx = startGridRow + k * subSpan;
+                  if (!next.cells[targetRowIdx]) {
+                    next.cells[targetRowIdx] = [];
                   }
+                  let insertCol = next.cells[targetRowIdx]!.length;
+                  for (let c = 0; c < next.cells[targetRowIdx]!.length; c += 1) {
+                    const other = next.cells[targetRowIdx]![c]!;
+                    const otherInfo = gridMap.cellToGrid.get(other);
+                    if (otherInfo && otherInfo.gridCol > startGridCol) {
+                      insertCol = c;
+                      break;
+                    }
+                  }
+                  next.cells[targetRowIdx]!.splice(insertCol, 0, {
+                    ...emptyCell(),
+                    colspan: targetCell.colspan || 1,
+                    rowspan: subSpan,
+                  });
                 }
               } else {
-                // Word-like row split:
-                // 1. All other cells in this row have their rowspan multiplied by rowsCount
-                next.cells[row]!.forEach((c, idx) => {
-                  if (idx !== col) {
-                    c.rowspan = (c.rowspan || 1) * rowsCount;
+                const splitRow = startGridRow + rSpan - 1;
+                const addedRows = rowsCount - 1;
+
+                const seen = new Set<WidgetCell>();
+                for (let r = 0; r < next.cells.length; r += 1) {
+                  for (let c = 0; c < (next.cells[r]?.length ?? 0); c += 1) {
+                    const other = next.cells[r]![c]!;
+                    if (other === targetCell || seen.has(other)) continue;
+                    seen.add(other);
+
+                    const cellInfo = gridMap.cellToGrid.get(other);
+                    if (!cellInfo) continue;
+                    const cellStartRow = cellInfo.gridRow;
+                    const cellEndRow = cellStartRow + (other.rowspan || 1) - 1;
+
+                    if (cellStartRow <= splitRow && cellEndRow >= splitRow) {
+                      other.rowspan = (other.rowspan || 1) + addedRows;
+                    }
                   }
-                });
+                }
 
-                // 2. Target cell becomes 1 rowspan
-                cell.rowspan = 1;
-
-                // 3. Insert (rowsCount - 1) new sub-rows
-                const newRows: WidgetCell[][] = Array.from({ length: rowsCount - 1 }, () => [
+                targetCell.rowspan = 1;
+                const newRows: WidgetCell[][] = Array.from({ length: addedRows }, () => [
                   {
                     ...emptyCell(),
-                    colspan: cell.colspan || 1,
+                    colspan: targetCell.colspan || 1,
                     rowspan: 1,
                   },
                 ]);
-                next.cells.splice(row + 1, 0, ...newRows);
+                next.cells.splice(splitRow + 1, 0, ...newRows);
 
-                // 4. Scale row heights
-                const origH = next.rowHeights[row];
+                const origH = next.rowHeights[splitRow];
                 const subH = origH != null ? Math.max(MIN_ROW_HEIGHT, Math.floor(origH / rowsCount)) : null;
-                next.rowHeights[row] = subH;
-                const newHeights = Array.from({ length: rowsCount - 1 }, () => subH);
-                next.rowHeights.splice(row + 1, 0, ...newHeights);
+                next.rowHeights[splitRow] = subH;
+                const newHeights = Array.from({ length: addedRows }, () => subH);
+                next.rowHeights.splice(splitRow + 1, 0, ...newHeights);
               }
-            });
+            }
           } else {
-            // Horizontal column splitting using Colspan Grid Scaling
             const colsCount = Math.max(2, options?.cols ?? 2);
+            const initialMap = buildGridMap(next.cells);
+            targetCells.sort((a, b) => {
+              const infoA = initialMap.cellToGrid.get(a);
+              const infoB = initialMap.cellToGrid.get(b);
+              return (infoB?.gridCol ?? 0) - (infoA?.gridCol ?? 0);
+            });
 
-            targets.forEach(({ row, col }) => {
-              const cell = next.cells[row]?.[col];
-              if (!cell) return;
+            for (const targetCell of targetCells) {
+              const pos = findCellPos(next.cells, targetCell);
+              if (!pos) continue;
+              const { row, col } = pos;
 
-              const currentSpan = Math.max(1, cell.colspan || 1);
+              const gridMap = buildGridMap(next.cells);
+              const info = gridMap.cellToGrid.get(targetCell);
+              if (!info) continue;
+              const { gridCol: startGridCol } = info;
+              const cSpan = Math.max(1, targetCell.colspan || 1);
 
-              if (currentSpan % colsCount !== 0) {
-                next.cells.forEach((r) => {
-                  r.forEach((c) => {
-                    c.colspan = (c.colspan || 1) * colsCount;
-                  });
-                });
-
-                const newColWidths: number[] = [];
-                next.colWidths.forEach((w) => {
-                  const base = Math.floor(w / colsCount);
-                  const rem = w % colsCount;
-                  for (let i = 0; i < colsCount; i += 1) {
-                    newColWidths.push(i === colsCount - 1 ? base + rem : base);
-                  }
-                });
-                next.colWidths = newColWidths;
+              if (cSpan >= colsCount && cSpan % colsCount === 0) {
+                const subSpan = cSpan / colsCount;
+                targetCell.colspan = subSpan;
+                const newCells: WidgetCell[] = Array.from({ length: colsCount - 1 }, () => ({
+                  ...emptyCell(),
+                  colspan: subSpan,
+                  rowspan: targetCell.rowspan || 1,
+                }));
+                next.cells[row]!.splice(col + 1, 0, ...newCells);
+                continue;
               }
 
-              const newSpan = Math.max(1, Math.round((cell.colspan || 1) / colsCount));
-              cell.colspan = newSpan;
+              const endGridCol = startGridCol + cSpan - 1;
+              const cellColWidths = next.colWidths.slice(startGridCol, endGridCol + 1);
+              const totalW = cellColWidths.reduce((a, b) => a + b, 0);
 
+              const minW = Math.max(8, Math.floor(totalW / colsCount));
+              let allocated = 0;
+              const newWidths: number[] = Array.from({ length: colsCount }, (_, i) => {
+                if (i === colsCount - 1) {
+                  return Math.max(minW, totalW - allocated);
+                }
+                const w = Math.max(minW, Math.floor(totalW / colsCount));
+                allocated += w;
+                return w;
+              });
+              const newSum = newWidths.reduce((a, b) => a + b, 0);
+              if (newSum !== totalW && newWidths.length > 0) {
+                newWidths[newWidths.length - 1] += (totalW - newSum);
+              }
+
+              next.colWidths.splice(startGridCol, cSpan, ...newWidths);
+
+              const addedCols = colsCount - cSpan;
+              const seen = new Set<WidgetCell>();
+
+              for (let r = 0; r < next.cells.length; r += 1) {
+                for (let c = 0; c < (next.cells[r]?.length ?? 0); c += 1) {
+                  const other = next.cells[r]![c]!;
+                  if (other === targetCell || seen.has(other)) continue;
+                  seen.add(other);
+
+                  const otherInfo = gridMap.cellToGrid.get(other);
+                  if (!otherInfo) continue;
+                  const cellStartCol = otherInfo.gridCol;
+                  const cellEndCol = cellStartCol + (other.colspan || 1) - 1;
+
+                  if (cellStartCol <= startGridCol && cellEndCol >= endGridCol) {
+                    other.colspan = (other.colspan || 1) + addedCols;
+                  }
+                }
+              }
+
+              targetCell.colspan = 1;
               const newCells: WidgetCell[] = Array.from({ length: colsCount - 1 }, () => ({
                 ...emptyCell(),
-                colspan: newSpan,
+                colspan: 1,
+                rowspan: targetCell.rowspan || 1,
               }));
               next.cells[row]!.splice(col + 1, 0, ...newCells);
-            });
+            }
           }
 
+          const usable = usableWidth(editor, next);
+          const currentTotalW = tablePixelWidth(next);
+          const finalNext = currentTotalW > usable ? fitColWidthsToWidth(next, usable) : next;
+
           clearWidgetSelection(editor);
-          dispatch(state.tr.setNodeMarkup(found.pos, undefined, next));
+          dispatch(state.tr.setNodeMarkup(found.pos, undefined, refreshTableStyle(finalNext)));
         }
         return true;
       },
