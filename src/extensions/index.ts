@@ -19,8 +19,16 @@ import { Indent } from './indent';
 import { LineHeight } from './lineHeight';
 import { WidgetTable } from './widgetTable/WidgetTable';
 import { CustomImage } from './customImage/CustomImage';
+import { ChartNode } from './illustration/ChartNode';
+import { ShapeNode } from './illustration/ShapeNode';
+import { SmartArtNode } from './illustration/SmartArtNode';
+import { PageBreak } from './PageBreak';
 
 export { CustomImage } from './customImage/CustomImage';
+export { ChartNode } from './illustration/ChartNode';
+export { ShapeNode } from './illustration/ShapeNode';
+export { SmartArtNode } from './illustration/SmartArtNode';
+export { PageBreak } from './PageBreak';
 
 /**
  * Free/open-source TipTap extensions useful for a formal document editor.
@@ -60,6 +68,10 @@ export function createDocumentExtensions(options?: {
         class: 'cde-image',
       },
     }),
+    ChartNode,
+    ShapeNode,
+    SmartArtNode,
+    PageBreak,
     TextAlign.configure({
       types: ['heading', 'paragraph'],
     }),

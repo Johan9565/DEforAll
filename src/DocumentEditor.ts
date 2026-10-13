@@ -603,7 +603,7 @@ export class DocumentEditor {
   }
 
   private insertPageBreak(): void {
-    this.editor.chain().focus().insertContent('<p style="break-before: page"><br></p>').run();
+    (this.editor.chain().focus() as any).insertPageBreak().run();
   }
 
   public setPagination(enabled: boolean): void {

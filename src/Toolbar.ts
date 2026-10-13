@@ -124,11 +124,8 @@ import {
   Upload,
 } from './icons';
 import { openLinkModal } from './utils/linkModal';
-import { openShapeModal } from './utils/shapeGenerator';
 import { openIconPickerModal } from './utils/iconPickerModal';
-import { openModel3DModal } from './utils/model3dGenerator';
-import { openSmartArtModal } from './utils/smartArtGenerator';
-import { openChartModal } from './utils/chartGenerator';
+import { openIllustrationPickerModal } from './utils/illustrationPickerModal';
 import { openHeaderFooterModal } from './utils/headerFooterModal';
 import { openFilerobotModal } from './utils/filerobotEditor';
 
@@ -1582,12 +1579,18 @@ export class Toolbar {
       }),
       this.createButton(
         {
-          title: 'Insertar formas geométricas, flechas y diagramas de flujo',
+          title: 'Insertar formas geométricas editables',
           label: `${lucideSvg(Shapes, 18)}<span class="text-[10px] font-medium">Formas</span>`,
           isDisabled: () => !this.isAllowed('allowImages'),
           run: () => {
             const editor = ed();
-            if (editor) openShapeModal(editor);
+            if (editor) {
+              import('./utils/shapeEditorModal').then((m) => {
+                m.openShapeEditorModal({} as any, (attrs) => {
+                  (editor.chain().focus() as any).insertShape(attrs).run();
+                });
+              });
+            }
           },
         },
         BTN_LG,
@@ -1606,36 +1609,48 @@ export class Toolbar {
       ),
       this.createButton(
         {
-          title: 'Insertar modelos y objetos 3D isométricos',
-          label: `${lucideSvg(Box, 18)}<span class="text-[10px] font-medium">Modelos 3D</span>`,
+          title: 'Insertar ilustraciones vectoriales prediseñadas',
+          label: `${lucideSvg(Box, 18)}<span class="text-[10px] font-medium">Ilustraciones</span>`,
           isDisabled: () => !this.isAllowed('allowImages'),
           run: () => {
             const editor = ed();
-            if (editor) openModel3DModal(editor);
+            if (editor) openIllustrationPickerModal(editor);
           },
         },
         BTN_LG,
       ),
       this.createButton(
         {
-          title: 'Insertar elemento gráfico SmartArt para comunicar procesos, listas y jerarquías',
+          title: 'Insertar SmartArt editable (procesos, jerarquías, ciclos)',
           label: `${lucideSvg(Workflow, 18)}<span class="text-[10px] font-medium">SmartArt</span>`,
           isDisabled: () => !this.isAllowed('allowImages'),
           run: () => {
             const editor = ed();
-            if (editor) openSmartArtModal(editor);
+            if (editor) {
+              import('./utils/smartArtEditorModal').then((m) => {
+                m.openSmartArtEditorModal({} as any, (attrs) => {
+                  (editor.chain().focus() as any).insertSmartArt(attrs).run();
+                });
+              });
+            }
           },
         },
         BTN_LG,
       ),
       this.createButton(
         {
-          title: 'Insertar gráficos estadísticos (columnas, líneas, circular, etc.)',
+          title: 'Insertar gráfico estadístico editable',
           label: `${lucideSvg(ChartColumn, 18)}<span class="text-[10px] font-medium">Gráfico</span>`,
           isDisabled: () => !this.isAllowed('allowImages'),
           run: () => {
             const editor = ed();
-            if (editor) openChartModal(editor);
+            if (editor) {
+              import('./utils/chartEditorModal').then((m) => {
+                m.openChartEditorModal({} as any, (attrs) => {
+                  (editor.chain().focus() as any).insertChart(attrs).run();
+                });
+              });
+            }
           },
         },
         BTN_LG,

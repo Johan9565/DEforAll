@@ -1,12 +1,10 @@
 import type { Editor } from '@tiptap/core';
-import { lucideSvg, Shapes, Check } from '../icons';
+import { lucideSvg, Shapes } from '../icons';
+import { svgToDataUri, insertImage, escapeXml, wrapText } from './imageFromUri';
 
-export interface ShapeDefinition {
-  id: string;
-  name: string;
-  category: 'basic' | 'arrows' | 'callouts' | 'flowchart';
-  renderSvg: (options: ShapeRenderOptions) => string;
-}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface ShapeRenderOptions {
   width: number;
@@ -18,278 +16,337 @@ export interface ShapeRenderOptions {
   textColor?: string;
 }
 
-const PRESET_COLORS = [
-  '#2563eb', // Azul Office
-  '#0284c7', // Azul cielo
-  '#0d9488', // Verde azulado
-  '#16a34a', // Verde esmeralda
-  '#d97706', // Ámbar
-  '#dc2626', // Rojo
-  '#9333ea', // Púrpura
-  '#475569', // Pizarra
-  '#0f172a', // Grafito oscuro
-  '#ffffff', // Blanco
-];
-
-const PRESET_STROKE_COLORS = [
-  '#1e40af',
-  '#0369a1',
-  '#0f766e',
-  '#15803d',
-  '#b45309',
-  '#b91c1c',
-  '#7e22ce',
-  '#334155',
-  '#cbd5e1',
-  'transparent',
-];
-
-function textElement(text: string | undefined, x: number, y: number, color = '#ffffff'): string {
-  if (!text?.trim()) return '';
-  return `<text x="${x}" y="${y}" fill="${color}" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="middle">${escapeXml(text.trim())}</text>`;
+export interface ShapeDefinition {
+  id: string;
+  name: string;
+  category: 'basic' | 'arrows' | 'callouts' | 'flowchart' | 'banners';
+  /** Path / primitive body in a normalized 0-100 × 0-100 viewBox (before text). */
+  body: (o: ShapeRenderOptions) => string;
+  /** Where to center text (in 0-100 space). */
+  textAt?: [number, number];
+  /** Max chars per line for text wrap. */
+  maxChars?: number;
 }
 
-function escapeXml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+// ---------------------------------------------------------------------------
+// Palettes
+// ---------------------------------------------------------------------------
+
+export const FILL_COLORS = [
+  '#2563eb', '#0284c7', '#0d9488', '#16a34a', '#d97706',
+  '#dc2626', '#9333ea', '#475569', '#0f172a', '#ffffff',
+];
+
+export const STROKE_COLORS = [
+  '#1e40af', '#0369a1', '#0f766e', '#15803d', '#b45309',
+  '#b91c1c', '#7e22ce', '#334155', '#cbd5e1', 'transparent',
+];
+
+// ---------------------------------------------------------------------------
+// Shape catalog (45+)
+// ---------------------------------------------------------------------------
 
 export const SHAPES: ShapeDefinition[] = [
   // --- BÁSICAS ---
   {
-    id: 'rect',
-    name: 'Rectángulo',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const w = width - sw * 2;
-      const h = height - sw * 2;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <rect x="${sw}" y="${sw}" width="${w}" height="${h}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'rect', name: 'Rectángulo', category: 'basic', textAt: [50, 50], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<rect x="${sw}" y="${sw}" width="${100 - sw * 2}" height="${100 - sw * 2}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
   },
   {
-    id: 'rounded-rect',
-    name: 'Rectángulo redondeado',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const rx = Math.min(width, height) * 0.2;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <rect x="${sw}" y="${sw}" width="${width - sw * 2}" height="${height - sw * 2}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'rounded-rect', name: 'Rectángulo redondeado', category: 'basic', textAt: [50, 50], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<rect x="${sw}" y="${sw}" width="${100 - sw * 2}" height="${100 - sw * 2}" rx="14" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
   },
   {
-    id: 'circle',
-    name: 'Círculo / Elipse',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const rx = (width - sw * 2) / 2;
-      const ry = (height - sw * 2) / 2;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <ellipse cx="${width / 2}" cy="${height / 2}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'square', name: 'Cuadrado', category: 'basic', textAt: [50, 50], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<rect x="12" y="12" width="76" height="76" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
   },
   {
-    id: 'triangle',
-    name: 'Triángulo',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const p1 = `${width / 2},${sw}`;
-      const p2 = `${width - sw},${height - sw}`;
-      const p3 = `${sw},${height - sw}`;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <polygon points="${p1} ${p2} ${p3}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />
-        ${textElement(text, width / 2, height * 0.65, textColor)}
-      </svg>`;
-    },
+    id: 'circle', name: 'Círculo', category: 'basic', textAt: [50, 50], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<ellipse cx="50" cy="50" rx="${48 - sw}" ry="${48 - sw}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
   },
   {
-    id: 'diamond',
-    name: 'Rombo / Diamante',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const p1 = `${width / 2},${sw}`;
-      const p2 = `${width - sw},${height / 2}`;
-      const p3 = `${width / 2},${height - sw}`;
-      const p4 = `${sw},${height / 2}`;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <polygon points="${p1} ${p2} ${p3} ${p4}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'ellipse', name: 'Elipse', category: 'basic', textAt: [50, 50], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<ellipse cx="50" cy="50" rx="${48 - sw}" ry="${32 - sw}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
   },
   {
-    id: 'star',
-    name: 'Estrella de 5 puntas',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const cx = width / 2;
-      const cy = height / 2;
-      const outerR = Math.min(cx, cy) - strokeWidth;
-      const innerR = outerR * 0.45;
-      const points: string[] = [];
-      for (let i = 0; i < 10; i++) {
-        const r = i % 2 === 0 ? outerR : innerR;
-        const angle = (i * Math.PI) / 5 - Math.PI / 2;
-        points.push(`${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`);
-      }
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <polygon points="${points.join(' ')}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="round" />
-        ${textElement(text, width / 2, height / 2 + 3, textColor)}
-      </svg>`;
-    },
+    id: 'triangle', name: 'Triángulo', category: 'basic', textAt: [50, 58], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="50,8 92,88 8,88" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
   },
   {
-    id: 'hexagon',
-    name: 'Hexágono',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const w = width - sw * 2;
-      const h = height - sw * 2;
-      const dx = w * 0.25;
-      const points = [
-        `${sw + dx},${sw}`,
-        `${sw + w - dx},${sw}`,
-        `${sw + w},${sw + h / 2}`,
-        `${sw + w - dx},${sw + h}`,
-        `${sw + dx},${sw + h}`,
-        `${sw},${sw + h / 2}`,
-      ].join(' ');
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'diamond', name: 'Rombo', category: 'basic', textAt: [50, 50], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="50,6 94,50 50,94 6,50" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
   },
   {
-    id: 'heart',
-    name: 'Corazón',
-    category: 'basic',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${width}" height="${height}">
-        <path d="M 50,85 C 20,60 5,40 5,25 C 5,10 20,5 35,5 C 43,5 48,10 50,15 C 52,10 57,5 65,5 C 80,5 95,10 95,25 C 95,40 80,60 50,85 Z"
-          fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth * (100 / width)}" stroke-linejoin="round" />
-        ${textElement(text, 50, 45, textColor)}
-      </svg>`;
-    },
+    id: 'pentagon', name: 'Pentágono', category: 'basic', textAt: [50, 52], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="50,6 93,38 76,90 24,90 7,38" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
   },
+  {
+    id: 'hexagon', name: 'Hexágono', category: 'basic', textAt: [50, 50], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="28,8 72,8 92,50 72,92 28,92 8,50" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'octagon', name: 'Octágono', category: 'basic', textAt: [50, 50], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="32,8 68,8 92,32 92,68 68,92 32,92 8,68 8,32" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'star5', name: 'Estrella 5 puntas', category: 'basic', textAt: [50, 54], maxChars: 8,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="50,6 61,38 95,38 68,58 78,90 50,70 22,90 32,58 5,38 39,38" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'star6', name: 'Estrella 6 puntas', category: 'basic', textAt: [50, 52], maxChars: 8,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="50,6 65,28 90,28 75,50 90,72 65,72 50,94 35,72 10,72 25,50 10,28 35,28" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'heart', name: 'Corazón', category: 'basic', textAt: [50, 52], maxChars: 8,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M50 88 C20 65 6 45 6 30 C6 16 18 8 30 8 C38 8 46 12 50 20 C54 12 62 8 70 8 C82 8 94 16 94 30 C94 45 80 65 50 88 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'cloud', name: 'Nube', category: 'basic', textAt: [50, 52], maxChars: 12,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M28 78 C14 78 6 68 6 56 C6 44 16 36 28 36 C30 22 42 12 56 12 C72 12 84 24 84 40 C92 42 98 50 98 60 C98 70 90 78 78 78 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'shield', name: 'Escudo', category: 'basic', textAt: [50, 48], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M50 6 L88 22 V52 C88 74 70 90 50 96 C30 90 12 74 12 52 V22 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'cross', name: 'Cruz / Suma', category: 'basic', textAt: [50, 50], maxChars: 6,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M38 8 H62 V38 H92 V62 H62 V92 H38 V62 H8 V38 H38 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+
   // --- FLECHAS ---
   {
-    id: 'arrow-right',
-    name: 'Flecha derecha',
-    category: 'arrows',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const yMid = height / 2;
-      const shaftH = height * 0.4;
-      const headW = width * 0.35;
-      const shaftY = (height - shaftH) / 2;
-      const p = [
-        `${sw},${shaftY}`,
-        `${width - headW},${shaftY}`,
-        `${width - headW},${sw}`,
-        `${width - sw},${yMid}`,
-        `${width - headW},${height - sw}`,
-        `${width - headW},${shaftY + shaftH}`,
-        `${sw},${shaftY + shaftH}`,
-      ].join(' ');
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <polygon points="${p}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />
-        ${textElement(text, (width - headW) / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'arrow-right', name: 'Flecha derecha', category: 'arrows', textAt: [40, 50], maxChars: 12,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M6 30 H60 V12 L94 50 L60 88 V70 H6 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
   },
   {
-    id: 'arrow-double',
-    name: 'Flecha doble',
-    category: 'arrows',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const headW = width * 0.25;
-      const shaftH = height * 0.35;
-      const shaftY = (height - shaftH) / 2;
-      const p = [
-        `${sw},${height / 2}`,
-        `${headW},${sw}`,
-        `${headW},${shaftY}`,
-        `${width - headW},${shaftY}`,
-        `${width - headW},${sw}`,
-        `${width - sw},${height / 2}`,
-        `${width - headW},${height - sw}`,
-        `${width - headW},${shaftY + shaftH}`,
-        `${headW},${shaftY + shaftH}`,
-        `${headW},${height - sw}`,
-      ].join(' ');
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <polygon points="${p}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
-  },
-  // --- LLAMADAS / BOCADILLOS ---
-  {
-    id: 'callout-rounded',
-    name: 'Bocadillo de diálogo',
-    category: 'callouts',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const bodyH = height * 0.75;
-      const r = 10;
-      const p = `M ${sw + r},${sw} 
-        H ${width - sw - r} 
-        Q ${width - sw},${sw} ${width - sw},${sw + r} 
-        V ${bodyH - r} 
-        Q ${width - sw},${bodyH} ${width - sw - r},${bodyH} 
-        H ${width * 0.4} 
-        L ${width * 0.25},${height - sw} 
-        L ${width * 0.28},${bodyH} 
-        H ${sw + r} 
-        Q ${sw},${bodyH} ${sw},${bodyH - r} 
-        V ${sw + r} 
-        Q ${sw},${sw} ${sw + r},${sw} Z`;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <path d="${p}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />
-        ${textElement(text, width / 2, bodyH / 2, textColor)}
-      </svg>`;
-    },
-  },
-  // --- DIAGRAMA DE FLUJO ---
-  {
-    id: 'flow-process',
-    name: 'Proceso (Flujo)',
-    category: 'flowchart',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <rect x="${sw}" y="${sw}" width="${width - sw * 2}" height="${height - sw * 2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="4" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'arrow-left', name: 'Flecha izquierda', category: 'arrows', textAt: [60, 50], maxChars: 12,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M94 30 H40 V12 L6 50 L40 88 V70 H94 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
   },
   {
-    id: 'flow-terminator',
-    name: 'Inicio / Fin (Terminador)',
-    category: 'flowchart',
-    renderSvg: ({ width, height, fill, stroke, strokeWidth, text, textColor }) => {
-      const sw = strokeWidth;
-      const rx = height / 2 - sw;
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
-        <rect x="${sw}" y="${sw}" width="${width - sw * 2}" height="${height - sw * 2}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
-        ${textElement(text, width / 2, height / 2, textColor)}
-      </svg>`;
-    },
+    id: 'arrow-up', name: 'Flecha arriba', category: 'arrows', textAt: [50, 62], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M30 94 V40 H12 L50 6 L88 40 H70 V94 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'arrow-down', name: 'Flecha abajo', category: 'arrows', textAt: [50, 38], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M30 6 V60 H12 L50 94 L88 60 H70 V6 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'arrow-right-plain', name: 'Flecha simple', category: 'arrows', textAt: [42, 50], maxChars: 12,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M8 42 H55 V25 L90 50 L55 75 V58 H8 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'chevron-right', name: 'Chevron >', category: 'arrows', textAt: [42, 50], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="8,12 52,50 8,88 30,88 74,50 30,12" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'chevron-process', name: 'Chevron proceso', category: 'arrows', textAt: [46, 50], maxChars: 11,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="4,18 50,18 96,50 50,82 4,82 34,50" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'double-arrow', name: 'Doble flecha', category: 'arrows', textAt: [50, 50], maxChars: 8,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M6 30 H38 V14 L62 50 L38 86 V70 H6 Z M42 30 H74 V14 L98 50 L74 86 V70 H42 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+
+  // --- LLAMADAS / CALLOUTS ---
+  {
+    id: 'callout-round', name: 'Bocadillo redondo', category: 'callouts', textAt: [50, 42], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M12 12 H88 Q96 12 96 20 V58 Q96 66 88 66 H48 L28 90 L32 66 H12 Q4 66 4 58 V20 Q4 12 12 12 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'callout-square', name: 'Bocadillo rectangular', category: 'callouts', textAt: [50, 40], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M6 10 H94 V62 H42 L24 90 L28 62 H6 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'callout-think', name: 'Bocadillo pensamiento', category: 'callouts', textAt: [50, 40], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M14 10 H86 Q94 10 94 18 V52 Q94 60 86 60 H14 Q6 60 6 52 V18 Q6 10 14 10 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
+       <circle cx="32" cy="72" r="7" fill="${fill}" stroke="${stroke}" stroke-width="${sw * 0.7}" />
+       <circle cx="20" cy="86" r="4.5" fill="${fill}" stroke="${stroke}" stroke-width="${sw * 0.7}" />`,
+  },
+  {
+    id: 'callout-rect', name: 'Nota rectangular', category: 'callouts', textAt: [50, 50], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<rect x="6" y="14" width="88" height="72" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
+       <path d="M6 22 L18 6 L26 14 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw * 0.8}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'callout-bubble', name: 'Globo de diálogo', category: 'callouts', textAt: [50, 42], maxChars: 13,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<ellipse cx="50" cy="42" rx="44" ry="32" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
+       <polygon points="38,68 30,94 56,72" fill="${fill}" stroke="${stroke}" stroke-width="${sw * 0.8}" stroke-linejoin="round" />`,
+  },
+
+  // --- FLUJO ---
+  {
+    id: 'flow-process', name: 'Proceso', category: 'flowchart', textAt: [50, 50], maxChars: 12,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<rect x="8" y="22" width="84" height="56" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
+  },
+  {
+    id: 'flow-terminator', name: 'Inicio / Fin', category: 'flowchart', textAt: [50, 50], maxChars: 12,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<rect x="8" y="26" width="84" height="48" rx="24" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
+  },
+  {
+    id: 'flow-decision', name: 'Decisión', category: 'flowchart', textAt: [50, 50], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="50,8 92,50 50,92 8,50" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'flow-data', name: 'Datos / Entrada', category: 'flowchart', textAt: [50, 50], maxChars: 11,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="22,22 92,22 78,78 8,78" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'flow-document', name: 'Documento', category: 'flowchart', textAt: [50, 46], maxChars: 11,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M10 18 H90 V72 Q72 88 50 78 Q28 68 10 78 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'flow-connector', name: 'Conector', category: 'flowchart', textAt: [50, 50], maxChars: 8,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<circle cx="50" cy="50" r="32" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
+  },
+  {
+    id: 'flow-preparation', name: 'Preparación', category: 'flowchart', textAt: [50, 50], maxChars: 11,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="22,18 78,18 96,50 78,82 22,82 4,50" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'flow-stored-data', name: 'Datos almacenados', category: 'flowchart', textAt: [50, 50], maxChars: 11,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M18 22 H82 Q96 22 96 36 V64 Q96 78 82 78 H18 Q4 78 4 64 V36 Q4 22 18 22 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
+  },
+  {
+    id: 'flow-display', name: 'Salida', category: 'flowchart', textAt: [48, 50], maxChars: 11,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M22 22 H82 L96 50 L82 78 H22 Q10 78 10 64 V36 Q10 22 22 22 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'flow-manual-input', name: 'Entrada manual', category: 'flowchart', textAt: [50, 52], maxChars: 11,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<polygon points="16,24 92,18 92,82 16,82" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'flow-database', name: 'Base de datos', category: 'flowchart', textAt: [50, 52], maxChars: 10,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<ellipse cx="50" cy="22" rx="34" ry="12" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
+       <path d="M16 22 V78 Q16 90 50 90 Q84 90 84 78 V22" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
+       <ellipse cx="50" cy="22" rx="34" ry="12" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`,
+  },
+
+  // --- BANNERS ---
+  {
+    id: 'banner-ribbon', name: 'Cinta horizontal', category: 'banners', textAt: [50, 50], maxChars: 16,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M4 32 H96 V68 H68 L60 88 L52 68 H4 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'banner-ribbon-top', name: 'Cinta superior', category: 'banners', textAt: [50, 48], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M8 28 L18 8 H82 L92 28 H68 V88 H32 V28 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'banner-pennant', name: 'Bandera / Pennant', category: 'banners', textAt: [48, 42], maxChars: 12,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M22 8 H78 V92 L50 72 L22 92 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'banner-plate', name: 'Placa / Etiqueta', category: 'banners', textAt: [50, 50], maxChars: 16,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M6 28 L22 8 H78 L94 28 V72 L78 92 H22 L6 72 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`,
+  },
+  {
+    id: 'banner-scroll', name: 'Pergamino', category: 'banners', textAt: [50, 50], maxChars: 14,
+    body: ({ fill, stroke, strokeWidth: sw }) =>
+      `<path d="M12 18 Q4 18 4 28 V72 Q4 82 12 82 H88 Q96 82 96 72 V28 Q96 18 88 18 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />
+       <circle cx="12" cy="50" r="8" fill="${fill}" stroke="${stroke}" stroke-width="${sw * 0.8}" />
+       <circle cx="88" cy="50" r="8" fill="${fill}" stroke="${stroke}" stroke-width="${sw * 0.8}" />`,
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
+
+export function renderShapeSvg(shape: ShapeDefinition, opts: ShapeRenderOptions): string {
+  const { width, height, text, textColor = '#ffffff' } = opts;
+  const body = shape.body(opts);
+
+  let textSvg = '';
+  if (text?.trim()) {
+    const [cx, cy] = shape.textAt ?? [50, 50];
+    const maxChars = shape.maxChars ?? 12;
+    // font-size scales with the smaller dimension
+    const fs = Math.max(9, Math.min(22, Math.min(width, height) * 0.11));
+    const lines = wrapText(text.trim(), maxChars, 3);
+    const lineHeight = fs * 1.25;
+    const startY = cy - ((lines.length - 1) * lineHeight) / 2;
+    textSvg = lines
+      .map(
+        (line, i) =>
+          `<text x="${cx}" y="${startY + i * lineHeight}" fill="${textColor}" font-family="system-ui, -apple-system, sans-serif" font-size="${fs}" font-weight="600" text-anchor="middle" dominant-baseline="middle">${escapeXml(line)}</text>`,
+      )
+      .join('');
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet">
+    ${body}
+    ${textSvg}
+  </svg>`;
+}
+
+function thumbFor(shape: ShapeDefinition, active: boolean): string {
+  const fill = active ? '#2563eb' : '#94a3b8';
+  const stroke = active ? '#1e40af' : '#64748b';
+  return renderShapeSvg(shape, {
+    width: 36,
+    height: 36,
+    fill,
+    stroke,
+    strokeWidth: 2,
+    textColor: '#ffffff',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Modal
+// ---------------------------------------------------------------------------
+
+export const CATEGORY_LABELS: Record<string, string> = {
+  all: 'Todas',
+  basic: 'Básicas',
+  arrows: 'Flechas',
+  callouts: 'Llamadas',
+  flowchart: 'Flujo',
+  banners: 'Banners',
+};
 
 export function openShapeModal(editor: Editor): void {
   const overlay = document.createElement('div');
@@ -297,307 +354,271 @@ export function openShapeModal(editor: Editor): void {
   overlay.tabIndex = -1;
 
   let selectedShapeId = 'rounded-rect';
-  let fillColor = '#2563eb';
-  let strokeColor = '#1e40af';
+  let activeCategory = 'all';
+  let shapeWidth = 220;
+  let shapeHeight = 120;
+  let fill = '#2563eb';
+  let stroke = '#1e40af';
   let strokeWidth = 2;
-  let textLabel = '';
-  let textColor = '#ffffff';
-  let shapeWidth = 200;
-  let shapeHeight = 110;
+  let text = '';
+  let textColor: 'white' | 'dark' | 'gold' = 'white';
 
-  const getActiveShape = () => SHAPES.find((s) => s.id === selectedShapeId) ?? SHAPES[0];
+  const TEXT_COLORS = { white: '#ffffff', dark: '#0f172a', gold: '#fbbf24' };
 
-  const renderCurrentPreview = () => {
-    const shape = getActiveShape();
-    return shape.renderSvg({
-      width: shapeWidth,
-      height: shapeHeight,
-      fill: fillColor,
-      stroke: strokeColor,
-      strokeWidth,
-      text: textLabel,
-      textColor,
-    });
-  };
+  const getShape = () => SHAPES.find((s) => s.id === selectedShapeId) ?? SHAPES[0];
+
+  const renderPreview = (): string =>
+    svgToDataUri(
+      renderShapeSvg(getShape(), {
+        width: shapeWidth,
+        height: shapeHeight,
+        fill,
+        stroke,
+        strokeWidth,
+        text,
+        textColor: TEXT_COLORS[textColor],
+      }),
+    );
 
   overlay.innerHTML = `
-    <div class="cde-modal cde-modal--lg" role="dialog" aria-modal="true">
+    <div class="cde-modal cde-modal--xl" role="dialog" aria-modal="true">
       <div class="cde-modal__header">
         <div class="flex items-center gap-2">
           <span class="text-blue-600">${lucideSvg(Shapes, 18)}</span>
-          <h2 class="cde-modal__title">Insertar formas</h2>
+          <h2 class="cde-modal__title">Insertar forma</h2>
         </div>
         <button type="button" class="cde-modal__close">&times;</button>
       </div>
 
-      <div class="cde-modal__body grid grid-cols-1 md:grid-cols-12 gap-5">
-        <!-- Columna izquierda: Galería de formas -->
-        <div class="md:col-span-7 flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-neutral-700">Seleccionar forma:</span>
-            <div class="flex gap-1 text-[11px]" id="shape-category-tabs">
-              <button type="button" class="px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium" data-cat="all">Todas</button>
-              <button type="button" class="px-2 py-0.5 rounded text-neutral-600 hover:bg-neutral-100" data-cat="basic">Básicas</button>
-              <button type="button" class="px-2 py-0.5 rounded text-neutral-600 hover:bg-neutral-100" data-cat="arrows">Flechas</button>
-              <button type="button" class="px-2 py-0.5 rounded text-neutral-600 hover:bg-neutral-100" data-cat="flowchart">Flujo</button>
-            </div>
-          </div>
-
-          <div class="cde-shape-grid grid grid-cols-4 gap-2.5 p-2 bg-neutral-50 border border-neutral-200 rounded max-h-60 overflow-y-auto" id="shape-items-grid">
-            ${SHAPES.map(
-              (s) => `
-              <button type="button" class="cde-shape-card p-2 rounded border flex flex-col items-center justify-center gap-1.5 transition-all ${
-                s.id === selectedShapeId
-                  ? 'border-blue-500 bg-blue-50/80 shadow-sm ring-1 ring-blue-400'
-                  : 'border-neutral-200 bg-white hover:border-neutral-300'
-              }" data-shape-id="${s.id}" title="${s.name}">
-                <div class="w-10 h-8 flex items-center justify-center pointer-events-none">
-                  ${s.renderSvg({ width: 36, height: 28, fill: '#3b82f6', stroke: '#1d4ed8', strokeWidth: 1.5 })}
-                </div>
-                <span class="text-[10px] text-neutral-700 truncate w-full text-center">${s.name}</span>
-              </button>
-            `,
-            ).join('')}
-          </div>
-
-          <!-- Texto dentro de la forma -->
-          <div>
-            <label class="block text-xs font-semibold text-neutral-700 mb-1" for="cde-shape-text">
-              Texto dentro de la forma (opcional):
-            </label>
-            <input
-              id="cde-shape-text"
-              type="text"
-              class="cde-modal__input w-full"
-              placeholder="Ej: Paso 1, Decisión, Total, etc."
-              value="${escapeXml(textLabel)}"
-            />
-          </div>
-
-          <!-- Dimensiones -->
-          <div class="flex items-center gap-4 text-xs text-neutral-700">
+      <div class="cde-modal__body">
+        <div class="cde-modal-cols">
+          <!-- Left: categories + shapes -->
+          <div class="cde-modal-col">
             <div>
-              <label class="block font-medium mb-1">Ancho (px):</label>
-              <input id="cde-shape-w" type="number" min="50" max="600" value="${shapeWidth}" class="cde-modal__input w-24" />
+              <span class="cde-field-label">Categoría</span>
+              <div class="flex gap-1.5 flex-wrap" id="cde-shape-cats">
+                ${Object.entries(CATEGORY_LABELS)
+                  .map(
+                    ([id, label]) => `
+                  <button type="button" class="cde-chip ${id === activeCategory ? 'is-active' : ''}" data-cat="${id}">${label}</button>`,
+                  )
+                  .join('')}
+              </div>
             </div>
+
+            <div class="cde-grid cde-grid--shapes flex-1" id="cde-shape-grid"></div>
+
             <div>
-              <label class="block font-medium mb-1">Alto (px):</label>
-              <input id="cde-shape-h" type="number" min="40" max="400" value="${shapeHeight}" class="cde-modal__input w-24" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Columna derecha: Estilo y Vista previa -->
-        <div class="md:col-span-5 flex flex-col gap-3">
-          <span class="text-xs font-semibold text-neutral-700">Estilo y colores:</span>
-
-          <!-- Relleno -->
-          <div>
-            <span class="text-[11px] font-medium text-neutral-600 block mb-1">Color de relleno:</span>
-            <div class="flex flex-wrap gap-1.5" id="fill-palette">
-              ${PRESET_COLORS.map(
-                (c) => `
-                <button type="button" class="w-5 h-5 rounded-full border border-neutral-300 transition-transform hover:scale-110 flex items-center justify-center ${
-                  c === fillColor ? 'ring-2 ring-blue-500 scale-110' : ''
-                }" style="background-color: ${c}" data-color="${c}">
-                  ${c === fillColor ? `<span class="${c === '#ffffff' ? 'text-neutral-800' : 'text-white'} text-[10px]">${lucideSvg(Check, 10)}</span>` : ''}
-                </button>
-              `,
-              ).join('')}
+              <label class="cde-field-label" for="cde-shape-text">Texto (opcional)</label>
+              <input id="cde-shape-text" type="text" class="cde-modal__input" value="${escapeXml(text)}" placeholder="Ej. Aprobado, Importante…" />
             </div>
           </div>
 
-          <!-- Trazo / Borde -->
-          <div>
-            <span class="text-[11px] font-medium text-neutral-600 block mb-1">Color de borde:</span>
-            <div class="flex flex-wrap gap-1.5" id="stroke-palette">
-              ${PRESET_STROKE_COLORS.map(
-                (c) => `
-                <button type="button" class="w-5 h-5 rounded-full border border-neutral-300 transition-transform hover:scale-110 flex items-center justify-center ${
-                  c === strokeColor ? 'ring-2 ring-blue-500 scale-110' : ''
-                }" style="background-color: ${c === 'transparent' ? '#ffffff' : c}; background-image: ${
-                  c === 'transparent' ? 'linear-gradient(45deg, #f87171 50%, transparent 50%)' : 'none'
-                }" data-stroke="${c}">
-                  ${c === strokeColor ? `<span class="${c === '#ffffff' || c === 'transparent' ? 'text-neutral-800' : 'text-white'} text-[10px]">${lucideSvg(Check, 10)}</span>` : ''}
-                </button>
-              `,
-              ).join('')}
+          <!-- Right: style + preview -->
+          <div class="cde-modal-col">
+            <div>
+              <span class="cde-field-label">Relleno</span>
+              <div class="flex flex-wrap gap-2 items-center" id="cde-shape-fills">
+                ${FILL_COLORS.map(
+                  (c) => `
+                  <button type="button" class="cde-swatch ${c === fill ? 'is-active' : ''}" data-fill="${c}" style="background:${c}"></button>`,
+                ).join('')}
+                <label class="cde-swatch-custom" title="Color personalizado">
+                  <input type="color" id="cde-shape-fill-custom" value="${fill}" />
+                </label>
+              </div>
             </div>
-          </div>
 
-          <!-- Color de texto -->
-          <div>
-            <span class="text-[11px] font-medium text-neutral-600 block mb-1">Color de fuente:</span>
-            <div class="flex items-center gap-2">
-              <label class="flex items-center gap-1 text-xs cursor-pointer">
-                <input type="radio" name="textColor" value="#ffffff" ${textColor === '#ffffff' ? 'checked' : ''} /> Blanco
-              </label>
-              <label class="flex items-center gap-1 text-xs cursor-pointer">
-                <input type="radio" name="textColor" value="#0f172a" ${textColor === '#0f172a' ? 'checked' : ''} /> Oscuro
-              </label>
-              <label class="flex items-center gap-1 text-xs cursor-pointer">
-                <input type="radio" name="textColor" value="#fbbf24" ${textColor === '#fbbf24' ? 'checked' : ''} /> Dorado
-              </label>
+            <div>
+              <span class="cde-field-label">Borde</span>
+              <div class="flex flex-wrap gap-2 items-center" id="cde-shape-strokes">
+                ${STROKE_COLORS.map(
+                  (c) => `
+                  <button type="button" class="cde-swatch ${c === stroke ? 'is-active' : ''}" data-stroke="${c}" style="background:${c === 'transparent' ? 'repeating-linear-gradient(45deg,#fee2e2 0 4px,#fff 4px 8px)' : c}"></button>`,
+                ).join('')}
+                <label class="cde-swatch-custom" title="Color de borde">
+                  <input type="color" id="cde-shape-stroke-custom" value="${stroke}" />
+                </label>
+              </div>
             </div>
-          </div>
 
-          <!-- Caja de vista previa -->
-          <div class="mt-1">
-            <span class="text-[11px] font-medium text-neutral-500 block mb-1">Vista previa interactiva:</span>
-            <div class="h-36 bg-neutral-100 rounded border border-neutral-300 flex items-center justify-center p-3 overflow-hidden shadow-inner" id="shape-preview-box">
-              ${renderCurrentPreview()}
+            <div>
+              <span class="cde-field-label">Grosor de borde: ${strokeWidth}px</span>
+              <input type="range" id="cde-shape-stroke-w" min="0" max="8" step="1" value="${strokeWidth}" />
+            </div>
+
+            <div>
+              <span class="cde-field-label">Color del texto</span>
+              <div class="flex gap-1.5 flex-wrap" id="cde-shape-text-colors">
+                ${(['white', 'dark', 'gold'] as const)
+                  .map(
+                    (t) => `
+                  <button type="button" class="cde-chip ${t === textColor ? 'is-active' : ''}" data-tcolor="${t}">${t === 'white' ? 'Blanco' : t === 'dark' ? 'Oscuro' : 'Dorado'}</button>`,
+                  )
+                  .join('')}
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <div class="flex flex-col gap-1">
+                <span class="cde-field-label mb-0">Ancho</span>
+                <input id="cde-shape-w" type="number" min="60" max="800" value="${shapeWidth}" class="cde-modal__input w-24" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <span class="cde-field-label mb-0">Alto</span>
+                <input id="cde-shape-h" type="number" min="40" max="600" value="${shapeHeight}" class="cde-modal__input w-24" />
+              </div>
+            </div>
+
+            <div class="flex-1 min-h-0">
+              <span class="cde-field-label">Vista previa</span>
+              <div class="cde-preview-box h-full min-h-[12rem]" id="cde-shape-preview-box"></div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="cde-modal__footer flex items-center justify-end gap-2">
-        <button type="button" class="cde-btn cde-btn--secondary" id="cde-shape-cancel">Cancelar</button>
-        <button type="button" class="cde-btn cde-btn--primary" id="cde-shape-insert">Insertar forma</button>
+      <div class="cde-modal__footer">
+        <span class="text-xs text-neutral-400">Se insertará como imagen SVG vectorial</span>
+        <div class="flex items-center gap-2">
+          <button type="button" class="cde-btn cde-btn--secondary" id="cde-shape-cancel">Cancelar</button>
+          <button type="button" class="cde-btn cde-btn--primary" id="cde-shape-insert">Insertar forma</button>
+        </div>
       </div>
     </div>
   `;
 
   document.body.appendChild(overlay);
 
-  const previewBox = overlay.querySelector('#shape-preview-box') as HTMLElement;
-  const textInput = overlay.querySelector('#cde-shape-text') as HTMLInputElement;
-  const widthInput = overlay.querySelector('#cde-shape-w') as HTMLInputElement;
-  const heightInput = overlay.querySelector('#cde-shape-h') as HTMLInputElement;
-  const closeBtn = overlay.querySelector('.cde-modal__close') as HTMLButtonElement;
-  const cancelBtn = overlay.querySelector('#cde-shape-cancel') as HTMLButtonElement;
-  const insertBtn = overlay.querySelector('#cde-shape-insert') as HTMLButtonElement;
-  const shapeGrid = overlay.querySelector('#shape-items-grid') as HTMLElement;
+  const grid = overlay.querySelector('#cde-shape-grid') as HTMLElement;
+  const previewBox = overlay.querySelector('#cde-shape-preview-box') as HTMLElement;
 
   const updatePreview = () => {
-    previewBox.innerHTML = renderCurrentPreview();
+    previewBox.innerHTML = `<img alt="Vista previa de la forma" src="${renderPreview()}" />`;
   };
 
-  const cleanup = () => {
-    overlay.remove();
-  };
-
-  closeBtn.addEventListener('click', cleanup);
-  cancelBtn.addEventListener('click', cleanup);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) cleanup();
-  });
-
-  // Shape selection
-  shapeGrid.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.cde-shape-card');
-    if (!btn) return;
-    const shapeId = btn.dataset.shapeId;
-    if (!shapeId) return;
-    selectedShapeId = shapeId;
-
-    shapeGrid.querySelectorAll('.cde-shape-card').forEach((b) => {
-      b.className =
-        'cde-shape-card p-2 rounded border flex flex-col items-center justify-center gap-1.5 transition-all border-neutral-200 bg-white hover:border-neutral-300';
-    });
-    btn.className =
-      'cde-shape-card p-2 rounded border flex flex-col items-center justify-center gap-1.5 transition-all border-blue-500 bg-blue-50/80 shadow-sm ring-1 ring-blue-400';
-
-    updatePreview();
-  });
-
-  // Category filter
-  overlay.querySelector('#shape-category-tabs')?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
-    if (!btn) return;
-    const cat = btn.dataset.cat;
-    overlay.querySelectorAll('#shape-category-tabs button').forEach((b) => {
-      b.className = 'px-2 py-0.5 rounded text-neutral-600 hover:bg-neutral-100';
-    });
-    btn.className = 'px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium';
-
-    const cards = shapeGrid.querySelectorAll<HTMLElement>('.cde-shape-card');
-    cards.forEach((card) => {
-      const s = SHAPES.find((sh) => sh.id === card.dataset.shapeId);
-      if (!s) return;
-      if (cat === 'all' || s.category === cat) {
-        card.style.display = 'flex';
-      } else {
-        card.style.display = 'none';
-      }
-    });
-  });
-
-  // Fill palette
-  overlay.querySelector('#fill-palette')?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
-    if (!btn?.dataset.color) return;
-    fillColor = btn.dataset.color;
-    overlay.querySelectorAll('#fill-palette button').forEach((b) => {
-      b.classList.remove('ring-2', 'ring-blue-500', 'scale-110');
-      b.innerHTML = '';
-    });
-    btn.classList.add('ring-2', 'ring-blue-500', 'scale-110');
-    btn.innerHTML = `<span class="${fillColor === '#ffffff' ? 'text-neutral-800' : 'text-white'} text-[10px]">${lucideSvg(Check, 10)}</span>`;
-    updatePreview();
-  });
-
-  // Stroke palette
-  overlay.querySelector('#stroke-palette')?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
-    if (!btn?.dataset.stroke) return;
-    strokeColor = btn.dataset.stroke;
-    overlay.querySelectorAll('#stroke-palette button').forEach((b) => {
-      b.classList.remove('ring-2', 'ring-blue-500', 'scale-110');
-      b.innerHTML = '';
-    });
-    btn.classList.add('ring-2', 'ring-blue-500', 'scale-110');
-    btn.innerHTML = `<span class="${strokeColor === '#ffffff' || strokeColor === 'transparent' ? 'text-neutral-800' : 'text-white'} text-[10px]">${lucideSvg(Check, 10)}</span>`;
-    updatePreview();
-  });
-
-  // Text color radio
-  overlay.querySelectorAll('input[name="textColor"]').forEach((r) => {
-    r.addEventListener('change', (e) => {
-      textColor = (e.target as HTMLInputElement).value;
-      updatePreview();
-    });
-  });
-
-  // Text input & dimensions
-  textInput.addEventListener('input', () => {
-    textLabel = textInput.value;
-    updatePreview();
-  });
-
-  widthInput.addEventListener('input', () => {
-    const val = parseInt(widthInput.value, 10);
-    if (val > 0) {
-      shapeWidth = val;
-      updatePreview();
-    }
-  });
-
-  heightInput.addEventListener('input', () => {
-    const val = parseInt(heightInput.value, 10);
-    if (val > 0) {
-      shapeHeight = val;
-      updatePreview();
-    }
-  });
-
-  insertBtn.addEventListener('click', () => {
-    const svgCode = renderCurrentPreview();
-    const dataUri = `data:image/svg+xml;utf8,${encodeURIComponent(svgCode)}`;
-    const shape = getActiveShape();
-
-    editor
-      .chain()
-      .focus()
-      .setImage({
-        src: dataUri,
-        alt: `Forma: ${shape.name}`,
-        width: shapeWidth,
-        height: shapeHeight,
-        alignment: 'center',
+  const renderGrid = () => {
+    const list = activeCategory === 'all' ? SHAPES : SHAPES.filter((s) => s.category === activeCategory);
+    grid.innerHTML = list
+      .map((s) => {
+        const active = s.id === selectedShapeId;
+        return `
+        <button type="button" class="cde-pick-card cde-shape-cell ${active ? 'is-active' : ''}" data-shape="${s.id}" title="${s.name}">
+          ${thumbFor(s, active)}
+          <span class="text-xs text-neutral-600 leading-tight">${s.name}</span>
+        </button>`;
       })
-      .run();
+      .join('');
+  };
 
-    cleanup();
+  renderGrid();
+  updatePreview();
+
+  // --- events ---
+  overlay.querySelector('#cde-shape-cats')!.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-cat]') as HTMLElement | null;
+    if (!btn) return;
+    activeCategory = btn.dataset.cat!;
+    overlay.querySelectorAll('#cde-shape-cats [data-cat]').forEach((el) => {
+      el.className = 'cde-chip' + ((el as HTMLElement).dataset.cat === activeCategory ? ' is-active' : '');
+    });
+    renderGrid();
+  });
+
+  grid.addEventListener('click', (e) => {
+    const cell = (e.target as HTMLElement).closest('[data-shape]') as HTMLElement | null;
+    if (!cell) return;
+    selectedShapeId = cell.dataset.shape!;
+    renderGrid();
+    updatePreview();
+  });
+
+  (overlay.querySelector('#cde-shape-text') as HTMLInputElement).addEventListener('input', (e) => {
+    text = (e.target as HTMLInputElement).value;
+    updatePreview();
+  });
+
+  overlay.querySelector('#cde-shape-fills')!.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-fill]') as HTMLElement | null;
+    if (!btn) return;
+    fill = btn.dataset.fill!;
+    overlay.querySelectorAll('[data-fill]').forEach((el) => {
+      el.className = 'cde-swatch' + ((el as HTMLElement).dataset.fill === fill ? ' is-active' : '');
+    });
+    updatePreview();
+  });
+
+  overlay.querySelector('#cde-shape-fill-custom')!.addEventListener('input', (e) => {
+    fill = (e.target as HTMLInputElement).value;
+    overlay.querySelectorAll('[data-fill]').forEach((el) => {
+      el.className = 'cde-swatch';
+    });
+    updatePreview();
+  });
+
+  overlay.querySelector('#cde-shape-strokes')!.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-stroke]') as HTMLElement | null;
+    if (!btn) return;
+    stroke = btn.dataset.stroke!;
+    overlay.querySelectorAll('[data-stroke]').forEach((el) => {
+      el.className = 'cde-swatch' + ((el as HTMLElement).dataset.stroke === stroke ? ' is-active' : '');
+    });
+    updatePreview();
+  });
+
+  overlay.querySelector('#cde-shape-stroke-custom')!.addEventListener('input', (e) => {
+    stroke = (e.target as HTMLInputElement).value;
+    overlay.querySelectorAll('[data-stroke]').forEach((el) => {
+      el.className = 'cde-swatch';
+    });
+    updatePreview();
+  });
+
+  (overlay.querySelector('#cde-shape-stroke-w') as HTMLInputElement).addEventListener('input', (e) => {
+    strokeWidth = Number((e.target as HTMLInputElement).value);
+    const label = overlay.querySelector('#cde-shape-stroke-w')!.previousElementSibling;
+    if (label) label.textContent = 'Grosor de borde: ' + strokeWidth + 'px';
+    updatePreview();
+  });
+
+  overlay.querySelector('#cde-shape-text-colors')!.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-tcolor]') as HTMLElement | null;
+    if (!btn) return;
+    textColor = btn.dataset.tcolor as any;
+    overlay.querySelectorAll('[data-tcolor]').forEach((el) => {
+      el.className = 'cde-chip' + ((el as HTMLElement).dataset.tcolor === textColor ? ' is-active' : '');
+    });
+    updatePreview();
+  });
+
+  (overlay.querySelector('#cde-shape-w') as HTMLInputElement).addEventListener('change', (e) => {
+    shapeWidth = Math.min(800, Math.max(60, Number((e.target as HTMLInputElement).value) || 220));
+    updatePreview();
+  });
+
+  (overlay.querySelector('#cde-shape-h') as HTMLInputElement).addEventListener('change', (e) => {
+    shapeHeight = Math.min(600, Math.max(40, Number((e.target as HTMLInputElement).value) || 120));
+    updatePreview();
+  });
+
+  const close = () => overlay.remove();
+  overlay.querySelector('.cde-modal__close')!.addEventListener('click', close);
+  overlay.querySelector('#cde-shape-cancel')!.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
+
+  overlay.querySelector('#cde-shape-insert')!.addEventListener('click', () => {
+    const src = renderPreview();
+    if (!src) return;
+    insertImage(editor, src, {
+      alt: `Forma: ${getShape().name}`,
+      width: shapeWidth,
+      height: shapeHeight,
+    });
+    close();
   });
 }

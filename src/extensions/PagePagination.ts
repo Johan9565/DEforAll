@@ -52,6 +52,7 @@ interface PageableUnit {
   domEl: HTMLElement;
   isTable: boolean;
   isInsideList: boolean;
+  isForcedBreak?: boolean;
 }
 
 export const PagePagination = Extension.create<
@@ -213,12 +214,16 @@ export const PagePagination = Extension.create<
               } else {
                 const dom = view.nodeDOM(pos);
                 if (dom instanceof HTMLElement) {
+                  // Detect explicit page breaks: <p style="break-before: page">
+                  const style = dom.getAttribute('style') || '';
+                  const isForcedBreak = typeName === 'pageBreak' || style.includes('break-before: page') || style.includes('break-before:page');
                   units.push({
                     pos,
                     node: child,
                     domEl: dom,
                     isTable: dom.classList.contains('cde-wt') || typeName === 'table',
                     isInsideList: false,
+                    isForcedBreak,
                   });
                 }
               }
@@ -321,9 +326,13 @@ export const PagePagination = Extension.create<
                 }
               }
 
+              // Forced page break: <p style="break-before: page">
+              const isForcedBreak = unit.isForcedBreak && placedTop > currentSheet.contentTop + 2;
+
               const overflowsCurrent =
-                placedTop + minNeeded > currentSheet.contentBottom &&
-                placedTop > currentSheet.contentTop;
+                (placedTop + minNeeded > currentSheet.contentBottom &&
+                  placedTop > currentSheet.contentTop) ||
+                isForcedBreak;
 
               if (overflowsCurrent) {
                 currentSheetIndex += 1;

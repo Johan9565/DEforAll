@@ -1,5 +1,5 @@
 import { DocumentEditor } from './DocumentEditor';
-import { COMPLEX_SAMPLE_DOCUMENT } from './sampleDocument';
+import { TEST_DOCUMENT_10_PAGES } from './testDocument';
 
 const container = document.querySelector<HTMLDivElement>('#app');
 
@@ -11,7 +11,7 @@ const editor = new DocumentEditor({
   element: container,
   pageSize: 'letter',
   pagination: true,
-  initialContent: COMPLEX_SAMPLE_DOCUMENT,
+  initialContent: TEST_DOCUMENT_10_PAGES,
   onUpdate: ({ html, pageCount }) => {
     console.log(
       `Actualizado · ${pageCount} pág. ·`,
@@ -19,7 +19,7 @@ const editor = new DocumentEditor({
     );
   },
   onPaginated: ({ pageCount }) => {
-    console.log('Páginas:', pageCount);
+    console.log('✅ Paginación completada — Páginas:', pageCount);
   },
 });
 

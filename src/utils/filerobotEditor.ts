@@ -77,7 +77,8 @@ export function openFilerobotModal(options: FilerobotModalOptions): () => void {
   overlay.style.inset = '0';
   overlay.style.zIndex = '10000';
   overlay.style.backgroundColor = 'rgba(15, 23, 42, 0.6)';
-  overlay.style.backdropFilter = 'blur(4px)';
+  // Sin backdrop-filter: puede romper el posicionamiento del overlay Html
+  // de react-konva-utils (editor de texto en canvas).
   overlay.style.display = 'flex';
   overlay.style.flexDirection = 'column';
   overlay.style.overflow = 'hidden';
@@ -272,6 +273,55 @@ export function openFilerobotModal(options: FilerobotModalOptions): () => void {
     }),
   );
 
+  // Marca de agua de texto — acceso directo sin menús (patrón de presets)
+  presetsGroup.appendChild(
+    createPresetBtn('Texto', 'Añadir marca de agua de texto', () => {
+      // 1) Ir a la pestaña Watermark
+      if (updateStateRef.current) {
+        updateStateRef.current({ tabId: 'Watermark', toolId: 'Watermark' });
+      }
+      // 2) Tras un frame, abrir el menú "Añadir marca de agua" y elegir "como texto"
+      requestAnimationFrame(() => {
+        const addBtn =
+          editorMount.querySelector<HTMLButtonElement>('.FIE_watermark-add-button') ||
+          editorMount.querySelector<HTMLButtonElement>(
+            '[data-testid="FIE-button-with-menu-button"]',
+          );
+        if (!addBtn) return;
+        addBtn.click();
+        requestAnimationFrame(() => {
+          const items = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              '.FIE_watermark-add-menu-item, [data-testid^="FIE-button-with-menu-menu-item-"]',
+            ),
+          );
+          const textItem = items.find((el) => {
+            const label = (el.textContent || '') + ' ' + (el.getAttribute('data-testid') || '');
+            return /texto|text/i.test(label) && !/upload|subir|image|imagen/i.test(label);
+          });
+          textItem?.click();
+          // 3) Entrar en modo edición de texto (keepTextEditing no lo inicia solo)
+          requestAnimationFrame(() => {
+            if (updateStateRef.current) {
+              updateStateRef.current({ textIdOfEditableContent: 'watermark' });
+            }
+            const editor = document.getElementById('FIE_text-content-editor');
+            if (editor) {
+              editor.focus();
+              // Colocar el caret al final del texto
+              const range = document.createRange();
+              range.selectNodeContents(editor);
+              range.collapse(false);
+              const sel = window.getSelection();
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+          });
+        });
+      });
+    }),
+  );
+
   // Right Save / Cancel Group
   const rightGroup = document.createElement('div');
   rightGroup.style.display = 'flex';
@@ -331,6 +381,7 @@ export function openFilerobotModal(options: FilerobotModalOptions): () => void {
   editorMount.style.flex = '1';
   editorMount.style.width = '100%';
   editorMount.style.height = 'calc(100vh - 52px)';
+  editorMount.style.minHeight = '0';
   editorMount.style.position = 'relative';
   editorMount.style.overflow = 'hidden';
 
@@ -405,11 +456,19 @@ export function openFilerobotModal(options: FilerobotModalOptions): () => void {
 
   saveBtn.onclick = triggerSave;
 
-  // Close on Escape key
+  // Close on Escape key (no cerrar mientras se edita texto en el canvas)
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      wrappedCleanup();
+    if (e.key !== 'Escape') return;
+    const active = document.activeElement as HTMLElement | null;
+    if (
+      active &&
+      (active.isContentEditable ||
+        active.id === 'FIE_text-content-editor' ||
+        active.closest('#FIE_text-content-editor'))
+    ) {
+      return;
     }
+    wrappedCleanup();
   };
   window.addEventListener('keydown', handleKeyDown);
 
@@ -465,6 +524,16 @@ export function openFilerobotModal(options: FilerobotModalOptions): () => void {
           { titleKey: '16:9 Panorámica', descriptionKey: '16:9', ratio: 16 / 9 },
           { titleKey: '3:2 Clásico', descriptionKey: '3:2', ratio: 3 / 2 },
         ],
+      },
+      [TOOLS.TEXT]: {
+        text: 'Texto de marca de agua',
+        fontFamily: 'Arial',
+        fontSize: 28,
+      },
+      [TOOLS.WATERMARK]: {
+        textScalingRatio: 0.5,
+        imageScalingRatio: 0.5,
+        hideTextWatermark: false,
       },
       language: 'es',
       savingPixelRatio: 2,

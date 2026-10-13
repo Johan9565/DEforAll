@@ -887,7 +887,7 @@
   color: #0f172a;
 }
 
-/* ─── Generic Dialog Modals (Link, Shapes, Icons, 3D, SmartArt, Charts, Header/Footer) ─── */
+/* ─── Generic Dialog Modals (Link, Shapes, Icons, Ilustraciones, SmartArt, Charts) ─── */
 .cde-modal-overlay {
   position: fixed;
   inset: 0;
@@ -895,19 +895,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
-  padding: 1rem;
-  animation: cdeFadeIn 0.15s ease-out;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px) saturate(1.2);
+  padding: 1.25rem;
+  animation: cdeFadeIn 0.2s ease-out;
+  overflow: auto;
 }
 
 @keyframes cdeFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .cde-modal {
@@ -915,146 +912,200 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-height: 90vh;
+  max-height: 92vh;
   background: #ffffff;
-  border-radius: 0.5rem;
+  border-radius: 16px;
   box-shadow:
-    0 20px 25px -5px rgba(0, 0, 0, 0.2),
-    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    0 0 0 1px rgba(15, 23, 42, 0.06),
+    0 24px 48px -12px rgba(15, 23, 42, 0.18),
+    0 8px 16px -8px rgba(15, 23, 42, 0.1);
   overflow: hidden;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   color: #1e293b;
-  animation: cdeScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: cdeScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes cdeScaleIn {
-  from {
-    transform: scale(0.96);
-    opacity: 0.5;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
+  from { transform: scale(0.97) translateY(6px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
 }
 
+/* Tamaños: md para diálogos simples, lg/xl para generadores ricos */
 .cde-modal--md {
-  max-width: 32rem;
+  max-width: 36rem;
 }
 
 .cde-modal--lg {
-  max-width: 48rem;
+  max-width: min(72rem, 94vw);
+  width: min(72rem, 94vw);
+  height: min(56rem, 90vh);
+  max-height: 90vh;
+}
+
+.cde-modal--xl {
+  max-width: min(80rem, 96vw);
+  width: min(80rem, 96vw);
+  height: min(58rem, 92vh);
+  max-height: 92vh;
 }
 
 .cde-modal__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1.25rem;
+  padding: 1rem 1.5rem;
   border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  flex-shrink: 0;
 }
 
 .cde-modal__title {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 1.05rem;
+  font-weight: 700;
   color: #0f172a;
+  letter-spacing: -0.01em;
 }
 
 .cde-modal__close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border: 0;
-  border-radius: 0.25rem;
+  border-radius: 8px;
   background: transparent;
   color: #64748b;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: all 0.15s ease;
 }
 
 .cde-modal__close:hover {
   background: #e2e8f0;
   color: #0f172a;
+  transform: scale(1.05);
 }
 
 .cde-modal__body {
-  padding: 1.25rem;
+  padding: 1.5rem;
   overflow-y: auto;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.cde-modal__body::-webkit-scrollbar {
+  width: 6px;
+}
+.cde-modal__body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+.cde-modal__body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .cde-modal__footer {
-  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
+  flex-shrink: 0;
 }
 
+/* ─── Inputs ─── */
 .cde-modal__input {
   display: block;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
   background: #ffffff;
   color: #0f172a;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+}
+
+.cde-modal__input:hover {
+  border-color: #cbd5e1;
 }
 
 .cde-modal__input:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
+/* ─── Buttons ─── */
 .cde-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.35rem 0.85rem;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
+  gap: 0.4rem;
+  padding: 0.55rem 1.15rem;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.cde-btn:active {
+  transform: scale(0.97);
 }
 
 .cde-btn--primary {
-  background: #2563eb;
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
   color: #ffffff;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25), 0 2px 8px rgba(37, 99, 235, 0.15);
 }
 
 .cde-btn--primary:hover {
-  background: #1d4ed8;
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3), 0 4px 12px rgba(37, 99, 235, 0.2);
+  transform: translateY(-1px);
+}
+
+.cde-btn--primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .cde-btn--secondary {
-  border-color: #cbd5e1;
+  border-color: #e2e8f0;
   background: #ffffff;
-  color: #334155;
+  color: #475569;
 }
 
 .cde-btn--secondary:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
 }
 
 .cde-btn--danger {
   border-color: #fecaca;
-  background: #fee2e2;
+  background: #fef2f2;
   color: #b91c1c;
 }
 
 .cde-btn--danger:hover {
-  background: #fca5a5;
-  border-color: #f87171;
+  background: #fee2e2;
+  border-color: #fca5a5;
 }
 
 .cde-proto-btn {
@@ -1075,15 +1126,475 @@
   color: #0f172a;
 }
 
-/* Ensure Filerobot dropdowns, aspect ratio menus, popups, and tooltips are always visible */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Ilustraciones — previews, grids, cards, swatches (premium)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Preview boxes: escalar, nunca recortar */
+.cde-preview-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  min-height: 12rem;
+}
+.cde-preview-box > img,
+.cde-preview-box > svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(15, 23, 42, 0.08));
+}
+
+/* ─── Section labels ─── */
+.cde-field-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Choice pills / chips ─── */
+.cde-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.cde-chip:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.cde-chip.is-active {
+  border-color: #2563eb;
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1d4ed8;
+  font-weight: 600;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* ─── Icon / shape / type cards ─── */
+.cde-pick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.65rem;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  text-align: center;
+}
+
+.cde-pick-card:hover {
+  border-color: #bfdbfe;
+  background: #f8fafc;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.cde-pick-card.is-active {
+  border-color: #2563eb;
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15), 0 4px 12px rgba(37, 99, 235, 0.12);
+}
+
+.cde-pick-card img,
+.cde-pick-card svg {
+  pointer-events: none;
+}
+
+/* ─── Scrollable grids ─── */
+.cde-grid {
+  display: grid;
+  gap: 0.65rem;
+  overflow-y: auto;
+  padding: 0.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.cde-grid::-webkit-scrollbar {
+  width: 5px;
+}
+.cde-grid::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.cde-grid--icons {
+  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
+  max-height: 22rem;
+}
+
+.cde-grid--shapes {
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  max-height: 20rem;
+}
+
+.cde-grid--types {
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  max-height: 18rem;
+}
+
+.cde-grid--presets {
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  max-height: 18rem;
+}
+
+/* ─── Color swatches ─── */
+.cde-swatch {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  border: 2px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.cde-swatch:hover {
+  transform: scale(1.12);
+  border-color: #94a3b8;
+}
+
+.cde-swatch.is-active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  transform: scale(1.08);
+}
+
+.cde-swatch-custom {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  border: 2px dashed #cbd5e1;
+  cursor: pointer;
+  overflow: hidden;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+/* ─── Slider / range ─── */
+input[type="range"] {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #e2e8f0;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* ─── Color inputs ─── */
+input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  width: 100%;
+  height: 100%;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: inherit;
+}
+
+/* ─── Two-column modal layout ─── */
+.cde-modal-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.75rem;
+  min-height: 0;
+}
+@media (max-width: 900px) {
+  .cde-modal-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cde-modal-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  min-height: 0;
+}
+
+/* ─── Data rows (charts / smartart items) ─── */
+.cde-data-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem;
+  border-radius: 8px;
+  transition: background 0.12s ease;
+}
+.cde-data-row:hover {
+  background: #f8fafc;
+}
+.cde-data-row .cde-modal__input {
+  padding: 0.4rem 0.6rem;
+}
+
+/* ─── Toggle checkboxes ─── */
+.cde-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8125rem;
+  color: #334155;
+}
+.cde-check input {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 4px;
+  border: 1.5px solid #cbd5e1;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+/* ─── Scrollable grids de iconos/formas ─── */
+.cde-icon-cell img,
+.cde-shape-cell img {
+  pointer-events: none;
+}
+
+/* ─── Tab bar inside modals ─── */
+.cde-tab-bar {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1.5px solid #e2e8f0;
+  padding-bottom: 0;
+}
+.cde-tab-bar button {
+  padding: 0.55rem 1.15rem;
+  border: 0;
+  border-bottom: 2.5px solid transparent;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: -1.5px;
+}
+.cde-tab-bar button:hover {
+  color: #1e293b;
+}
+.cde-tab-bar button.is-active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
+}
+
+/* ─── Search input ─── */
+.cde-search-wrap {
+  position: relative;
+}
+.cde-search-wrap .cde-modal__input {
+  padding-left: 2.25rem;
+}
+.cde-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+  display: flex;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Nodos editables de ilustración (chart, shape, smartart)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.cde-illus-node {
+  display: flex;
+  justify-content: center;
+  margin: 0.75em 0;
+  user-select: none;
+}
+
+.cde-illus-box {
+  position: relative;
+  display: inline-block;
+  border-radius: 10px;
+  transition: outline 0.15s ease, box-shadow 0.15s ease;
+  outline: 2px solid transparent;
+  outline-offset: 3px;
+  cursor: pointer;
+}
+
+.cde-illus-box:hover {
+  outline-color: #93c5fd;
+}
+
+.cde-illus-box.is-selected {
+  outline-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+.cde-illus-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.cde-illus-preview svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.cde-illus-badge {
+  position: absolute;
+  top: -2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.75rem;
+  background: #1e293b;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: cdeScaleIn 0.15s ease-out;
+  z-index: 10;
+}
+
+.cde-illus-badge-hint {
+  font-weight: 400;
+  opacity: 0.7;
+  font-size: 0.65rem;
+}
+
+/* ─── Page break node ─── */
+.cde-page-break-node {
+  display: block;
+  width: 100%;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  page-break-before: always;
+  break-before: page;
+  pointer-events: none;
+  user-select: none;
+  position: relative;
+}
+
+.cde-page-break-node::before {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 1px;
+  margin: 8px 0;
+  background: repeating-linear-gradient(
+    90deg,
+    #cbd5e1 0,
+    #cbd5e1 8px,
+    transparent 8px,
+    transparent 16px
+  );
+}
+
+/* ==========================================================================
+   Filerobot Image Editor — layout + portales Sfx
+   ========================================================================== */
+
+/* --- Lienzo: respiro alrededor del canvas de recorte/ajuste --- */
+/* La lib aplica style inline padding:16 y height calc(100%-112px-16px)
+   sobre .FIE_canvas-container; lo elevamos y corregimos. */
+.cde-filerobot-modal-container .FIE_canvas-container {
+  padding: 28px !important;
+  min-height: 0 !important;
+}
+
+/* Tabs laterales miden 108px reales (no 80px como asume la lib) */
+.cde-filerobot-modal-container .FIE_editor-content {
+  width: calc(100% - 108px) !important;
+  min-height: 0 !important;
+}
+
+/* ToolsBar no debe robar toda la altura al canvas */
+.cde-filerobot-modal-container .FIE_tools-bar-wrapper {
+  max-height: 150px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* El root de la app no debe crear scroll que empuje el canvas */
+.cde-filerobot-modal-container .FIE_root {
+  overflow: hidden !important;
+  border-radius: 0;
+}
+
+/* --- Portales Sfx (menús, popups, tooltips) ---
+   El portal #SfxPopper se monta en document.body con z-index 1300 por defecto.
+   Nuestro modal está en z-index 10000, así que sin este override los menús
+   (watermark, fuentes, color, crop) quedan DETRÁS del modal y no se pueden clicar.
+   Tampoco forzar position:relative en el hijo: rompe el offsetParent de popper.js. */
 #SfxPopper,
 #SfxPopup {
   position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 0 !important;
-  height: 0 !important;
-  z-index: 99999999 !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  z-index: 10001 !important;
   pointer-events: none !important;
 }
 
@@ -1092,8 +1603,7 @@
 .SfxPopper-wrapper,
 .SfxPopup-wrapper {
   pointer-events: auto !important;
-  position: relative !important;
-  z-index: 99999999 !important;
+  z-index: 10001 !important;
 }
 
 .SfxPopper-root,
@@ -1106,23 +1616,16 @@
 .FIE_save-modal,
 .FIE_crop-presets-menu,
 [data-tippy-root] {
-  z-index: 10000000 !important;
+  z-index: 10001 !important;
 }
 
-/* Prevent backdrop click collision from immediately closing newly opened dropdowns */
+/* Overlay de menús: no interceptar clics (el menú se cierra por onClose) */
 .SfxPopper-Overlay,
 .SfxMenu-Overlay {
   pointer-events: none !important;
-  animation: sfxOverlayEnable 0.18s forwards !important;
 }
 
-@keyframes sfxOverlayEnable {
-  0% { pointer-events: none; }
-  90% { pointer-events: none; }
-  100% { pointer-events: auto; }
-}
-
-/* Make sure Filerobot menus have visible solid background, borders, and crisp shadows */
+/* --- Menús Filerobot: fondo sólido y legible --- */
 .SfxMenu-root,
 .FIE_crop-presets-menu {
   background-color: #ffffff !important;
@@ -1141,6 +1644,22 @@
   display: none !important;
   width: 0 !important;
   height: 0 !important;
+}
+
+/* --- Editor de texto en canvas (watermark / anotaciones) ---
+   TextNodeContentTextarea renderiza un contentEditable con id TEXT_EDITOR_ID
+   dentro de un Html de react-konva-utils (div absolute sobre el stage). */
+#FIE_text-content-editor {
+  pointer-events: auto !important;
+  z-index: 20 !important;
+  cursor: text !important;
+  user-select: text !important;
+  outline: 3px solid #2563eb !important;
+}
+
+#FIE_text-selected-part {
+  background: #2563eb !important;
+  color: #fff !important;
 }
 
 
