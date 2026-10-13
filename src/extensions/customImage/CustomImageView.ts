@@ -2,11 +2,13 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/core';
 import type { NodeView } from '@tiptap/pm/view';
 import { NodeSelection } from '@tiptap/pm/state';
-import { getFilterCss, IMAGE_FILTERS, openCropModal } from '../../utils/imageEffects';
+import { getFilterCss, IMAGE_FILTERS } from '../../utils/imageEffects';
+import { openFilerobotModal } from '../../utils/filerobotEditor';
 import { optimizeImage } from '../../utils/imageOptimizer';
 import {
   lucideSvg,
   Crop,
+  Sliders,
   Palette,
   AlignCenter,
   WrapText,
@@ -50,6 +52,19 @@ export class CustomImageView implements NodeView {
 
     this.box.addEventListener('contextmenu', () => {
       this.dispatchNodeSelection();
+    });
+
+    // Double-click to open full Filerobot Image Editor
+    this.box.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!this.editor.isEditable) return;
+      openFilerobotModal({
+        src: this.node.attrs.src,
+        onSave: (savedSrc) => {
+          this.updateAttrs({ src: savedSrc });
+        },
+      });
     });
   }
 
@@ -131,13 +146,32 @@ export class CustomImageView implements NodeView {
     bar.className = 'cde-img-quick-bar';
     bar.tabIndex = -1;
 
-    // 1. Recortar (Crop)
+    // 1. Editor avanzado (Filerobot)
+    const editBtn = this.createQuickBtn(
+      `${lucideSvg(Sliders, 13)}<span>Editar</span>`,
+      'Editar imagen con Filerobot (recortar, filtros, anotar, redimensionar)',
+      () => {
+        openFilerobotModal({
+          src: this.node.attrs.src,
+          onSave: (savedSrc) => {
+            this.updateAttrs({ src: savedSrc });
+          },
+        });
+      },
+    );
+
+    // 2. Recortar (Crop)
     const cropBtn = this.createQuickBtn(
       `${lucideSvg(Crop, 13)}<span>Recortar</span>`,
-      'Recortar imagen',
+      'Recortar imagen con Filerobot',
       () => {
-        openCropModal(this.node.attrs.src, (croppedSrc) => {
-          this.updateAttrs({ src: croppedSrc });
+        openFilerobotModal({
+          src: this.node.attrs.src,
+          defaultTab: 'Adjust',
+          defaultTool: 'Crop',
+          onSave: (croppedSrc) => {
+            this.updateAttrs({ src: croppedSrc });
+          },
         });
       },
     );
@@ -210,6 +244,7 @@ export class CustomImageView implements NodeView {
     );
 
     bar.append(
+      editBtn,
       cropBtn,
       filterBtn,
       this.createSep(),

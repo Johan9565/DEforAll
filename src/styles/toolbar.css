@@ -752,6 +752,11 @@
   color: #1d4ed8;
 }
 
+.cde-tb-menu__item:hover .cde-tb-menu__icon,
+.cde-tb-menu__item:hover svg {
+  color: #1d4ed8;
+}
+
 .cde-tb-menu__item.is-active,
 .cde-menu-item.is-selected {
   background: #eff6ff;
@@ -881,3 +886,263 @@
   background: #e2e8f0;
   color: #0f172a;
 }
+
+/* ─── Generic Dialog Modals (Link, Shapes, Icons, 3D, SmartArt, Charts, Header/Footer) ─── */
+.cde-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  padding: 1rem;
+  animation: cdeFadeIn 0.15s ease-out;
+}
+
+@keyframes cdeFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cde-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 90vh;
+  background: #ffffff;
+  border-radius: 0.5rem;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.2),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: #1e293b;
+  animation: cdeScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cdeScaleIn {
+  from {
+    transform: scale(0.96);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.cde-modal--md {
+  max-width: 32rem;
+}
+
+.cde-modal--lg {
+  max-width: 48rem;
+}
+
+.cde-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.cde-modal__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.cde-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #64748b;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.cde-modal__close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.cde-modal__body {
+  padding: 1.25rem;
+  overflow-y: auto;
+  font-size: 0.75rem;
+}
+
+.cde-modal__footer {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.cde-modal__input {
+  display: block;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.25rem;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.cde-modal__input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.cde-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cde-btn--primary {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.cde-btn--primary:hover {
+  background: #1d4ed8;
+}
+
+.cde-btn--secondary {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+.cde-btn--secondary:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.cde-btn--danger {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.cde-btn--danger:hover {
+  background: #fca5a5;
+  border-color: #f87171;
+}
+
+.cde-proto-btn {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.2rem;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.65rem;
+  font-family: monospace;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.cde-proto-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* Ensure Filerobot dropdowns, aspect ratio menus, popups, and tooltips are always visible */
+#SfxPopper,
+#SfxPopup {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  z-index: 99999999 !important;
+  pointer-events: none !important;
+}
+
+#SfxPopper > *,
+#SfxPopup > *,
+.SfxPopper-wrapper,
+.SfxPopup-wrapper {
+  pointer-events: auto !important;
+  position: relative !important;
+  z-index: 99999999 !important;
+}
+
+.SfxPopper-root,
+.SfxPopper,
+.SfxMenu-root,
+.SfxModal-Wrapper,
+.SfxModal-root,
+.SfxModal-Container,
+.SfxPopup-root,
+.FIE_save-modal,
+.FIE_crop-presets-menu,
+[data-tippy-root] {
+  z-index: 10000000 !important;
+}
+
+/* Prevent backdrop click collision from immediately closing newly opened dropdowns */
+.SfxPopper-Overlay,
+.SfxMenu-Overlay {
+  pointer-events: none !important;
+  animation: sfxOverlayEnable 0.18s forwards !important;
+}
+
+@keyframes sfxOverlayEnable {
+  0% { pointer-events: none; }
+  90% { pointer-events: none; }
+  100% { pointer-events: auto; }
+}
+
+/* Make sure Filerobot menus have visible solid background, borders, and crisp shadows */
+.SfxMenu-root,
+.FIE_crop-presets-menu {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.FIE_crop-presets-menu [role="menuitem"],
+.FIE_crop-presets-menu button,
+.FIE_crop-presets-menu li {
+  color: #1e293b !important;
+}
+
+.cde-filerobot-presets-group::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+
+
+

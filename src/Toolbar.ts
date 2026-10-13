@@ -23,7 +23,7 @@ import {
 } from './extensions/widgetTable/model';
 import { findActiveTableAttrs, hasActiveTable } from './extensions/widgetTable/WidgetTable';
 import type { WidgetTableView } from './extensions/widgetTable/WidgetTableView';
-import type { PageColumns, PageMargins, PageOrientation, PageSize, DocumentRestrictions } from './types';
+import type { PageColumns, PageMargins, PageOrientation, PageSize, DocumentRestrictions, HeaderFooterConfig } from './types';
 import {
   lucideSvg,
   FileText,
@@ -113,7 +113,24 @@ import {
   Undo2,
   Redo2,
   Printer,
+  Shapes,
+  Smile,
+  Box,
+  Workflow,
+  ChartColumn,
+  PanelTop,
+  PanelBottom,
+  Hash,
+  Upload,
 } from './icons';
+import { openLinkModal } from './utils/linkModal';
+import { openShapeModal } from './utils/shapeGenerator';
+import { openIconPickerModal } from './utils/iconPickerModal';
+import { openModel3DModal } from './utils/model3dGenerator';
+import { openSmartArtModal } from './utils/smartArtGenerator';
+import { openChartModal } from './utils/chartGenerator';
+import { openHeaderFooterModal } from './utils/headerFooterModal';
+import { openFilerobotModal } from './utils/filerobotEditor';
 
 export interface DocumentSearchApi {
   find: (term: string, caseSensitive: boolean) => DocumentSearchMatch[];
@@ -153,6 +170,8 @@ export interface ToolbarOptions {
     toggleRuler?: () => void;
     getPagination?: () => boolean;
     setPagination?: (enabled: boolean) => void;
+    getHeaderFooter?: () => HeaderFooterConfig;
+    setHeaderFooter?: (value: Partial<HeaderFooterConfig>) => void;
   };
   getRestrictions?: () => DocumentRestrictions;
   setRestrictions?: (restrictions: Partial<DocumentRestrictions>) => void;
@@ -1472,45 +1491,157 @@ export class Toolbar {
     panel.appendChild(tables);
 
     // 3. Ilustraciones (Imágenes)
+    // 3. Ilustraciones (Imágenes, Formas, Iconos, Modelos 3D, SmartArt, Gráficos)
     const media = this.createSection('Ilustraciones');
     const mediaBody = media.querySelector('[data-section-body]')!;
+    const mediaRow = document.createElement('div');
+    mediaRow.className = 'flex flex-wrap items-center gap-1';
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/*';
     fileInput.className = 'hidden';
-    fileInput.addEventListener('change', async () => {
+    fileInput.addEventListener('change', () => {
       const file = fileInput.files?.[0];
       if (!file) return;
-      const opt = await optimizeImage(file);
-      this.insertImageSrc(opt.dataUrl);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const rawUrl = reader.result as string;
+        openFilerobotModal({
+          src: rawUrl,
+          onSave: (savedUrl) => {
+            this.insertImageSrc(savedUrl);
+          },
+        });
+      };
+      reader.readAsDataURL(file);
       fileInput.value = '';
     });
     mediaBody.appendChild(fileInput);
 
-    mediaBody.appendChild(
+    mediaRow.append(
       this.createDropdown({
-        title: 'Insertar imágenes desde archivo local o dirección URL',
+        title: 'Insertar y editar imágenes con Filerobot',
         caption: 'Imágenes',
         face: lucideSvg(LucideImage, 18),
         large: true,
         isDisabled: () => !this.isAllowed('allowImages'),
         menuClassName: 'cde-tb-menu--list',
         build: (menu) => {
-          menu.append(
-            this.createMenuItem('Subir desde este equipo?', () => {
-              fileInput.click();
-            }),
-            this.createMenuItem('Por dirección URL…', () => {
-              const url = window.prompt('URL de la imagen:');
-              if (url?.trim()) {
-                this.insertImageSrc(url.trim());
-              }
-            }),
+          const items: HTMLElement[] = [
+            this.createMenuItem(
+              'Subir foto desde este equipo…',
+              () => {
+                fileInput.click();
+              },
+              Upload,
+            ),
+          ];
+
+          const activeEd = ed();
+          if (activeEd?.isActive('image')) {
+            const currentSrc = activeEd.getAttributes('image')?.src;
+            if (currentSrc) {
+              items.push(
+                this.createMenuItem(
+                  'Editar foto seleccionada…',
+                  () => {
+                    openFilerobotModal({
+                      src: currentSrc,
+                      onSave: (saved) => {
+                        activeEd.chain().focus().updateImage({ src: saved }).run();
+                      },
+                    });
+                  },
+                  Sliders,
+                ),
+              );
+            }
+          }
+
+          items.push(
+            this.createMenuItem(
+              'Por dirección web (URL)…',
+              () => {
+                const url = window.prompt('URL de la imagen:');
+                if (url?.trim()) {
+                  openFilerobotModal({
+                    src: url.trim(),
+                    onSave: (savedUrl) => {
+                      this.insertImageSrc(savedUrl);
+                    },
+                  });
+                }
+              },
+              Globe,
+            ),
           );
+
+          menu.append(...items);
         },
       }),
+      this.createButton(
+        {
+          title: 'Insertar formas geométricas, flechas y diagramas de flujo',
+          label: `${lucideSvg(Shapes, 18)}<span class="text-[10px] font-medium">Formas</span>`,
+          isDisabled: () => !this.isAllowed('allowImages'),
+          run: () => {
+            const editor = ed();
+            if (editor) openShapeModal(editor);
+          },
+        },
+        BTN_LG,
+      ),
+      this.createButton(
+        {
+          title: 'Insertar iconos vectoriales de la biblioteca',
+          label: `${lucideSvg(Smile, 18)}<span class="text-[10px] font-medium">Iconos</span>`,
+          isDisabled: () => !this.isAllowed('allowImages'),
+          run: () => {
+            const editor = ed();
+            if (editor) openIconPickerModal(editor);
+          },
+        },
+        BTN_LG,
+      ),
+      this.createButton(
+        {
+          title: 'Insertar modelos y objetos 3D isométricos',
+          label: `${lucideSvg(Box, 18)}<span class="text-[10px] font-medium">Modelos 3D</span>`,
+          isDisabled: () => !this.isAllowed('allowImages'),
+          run: () => {
+            const editor = ed();
+            if (editor) openModel3DModal(editor);
+          },
+        },
+        BTN_LG,
+      ),
+      this.createButton(
+        {
+          title: 'Insertar elemento gráfico SmartArt para comunicar procesos, listas y jerarquías',
+          label: `${lucideSvg(Workflow, 18)}<span class="text-[10px] font-medium">SmartArt</span>`,
+          isDisabled: () => !this.isAllowed('allowImages'),
+          run: () => {
+            const editor = ed();
+            if (editor) openSmartArtModal(editor);
+          },
+        },
+        BTN_LG,
+      ),
+      this.createButton(
+        {
+          title: 'Insertar gráficos estadísticos (columnas, líneas, circular, etc.)',
+          label: `${lucideSvg(ChartColumn, 18)}<span class="text-[10px] font-medium">Gráfico</span>`,
+          isDisabled: () => !this.isAllowed('allowImages'),
+          run: () => {
+            const editor = ed();
+            if (editor) openChartModal(editor);
+          },
+        },
+        BTN_LG,
+      ),
     );
+    mediaBody.appendChild(mediaRow);
     panel.appendChild(media);
 
     // 4. Vínculos
@@ -1518,34 +1649,181 @@ export class Toolbar {
     links.querySelector('[data-section-body]')!.appendChild(
       this.createButton(
         {
-          title: 'Insertar o editar vínculo web',
+          title: 'Insertar o editar hipervínculo web',
           label: `${lucideSvg(LucideLink, 18)}<span class="text-[10px] font-medium">Vínculo</span>`,
           isDisabled: () => !this.isAllowed('allowLinks'),
           isActive: () => ed()?.isActive('link') ?? false,
           run: () => {
             const editor = ed();
-            if (!editor) return;
-            const previous = editor.getAttributes('link').href as
-              | string
-              | undefined;
-            const url = window.prompt('URL del enlace', previous ?? 'https://');
-            if (url === null) return;
-            if (url.trim() === '') {
-              editor.chain().focus().extendMarkRange('link').unsetLink().run();
-              return;
-            }
-            editor
-              .chain()
-              .focus()
-              .extendMarkRange('link')
-              .setLink({ href: url.trim() })
-              .run();
+            if (editor) openLinkModal({ editor });
           },
         },
         BTN_LG,
       ),
     );
     panel.appendChild(links);
+
+    // 5. Encabezado y pie de página
+    if (this.pageLayout) {
+      const headerFooterSec = this.createSection('Encabezado y pie');
+      const hfBody = headerFooterSec.querySelector('[data-section-body]')!;
+      const hfRow = document.createElement('div');
+      hfRow.className = 'flex flex-wrap items-center gap-1';
+
+      const getCurConfig = (): HeaderFooterConfig =>
+        this.pageLayout?.getHeaderFooter?.() ?? {
+          showHeader: false,
+          showFooter: true,
+          pageNumberFormat: 'page_x',
+          pageNumberPosition: 'footer-right',
+        };
+
+      hfRow.append(
+        this.createDropdown({
+          title: 'Insertar o editar el encabezado del documento',
+          caption: 'Encabezado',
+          face: lucideSvg(PanelTop, 18),
+          large: true,
+          isDisabled: () => !this.isAllowed('allowPageSettings'),
+          menuClassName: 'cde-tb-menu--list',
+          build: (menu) => {
+            menu.append(
+              this.createMenuItem('Personalizar encabezado…', () => {
+                openHeaderFooterModal({
+                  config: getCurConfig(),
+                  initialTab: 'header',
+                  onApply: (cfg) => this.pageLayout?.setHeaderFooter?.(cfg),
+                });
+              }, Sliders),
+              this.createMenuItem('Estilo simple (Título)', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showHeader: true,
+                  headerLeft: 'Documento',
+                  headerRight: '',
+                });
+              }, FileText),
+              this.createMenuItem('Tres columnas (Izquierda / Centro / Derecha)', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showHeader: true,
+                  headerLeft: 'Documento',
+                  headerCenter: 'Sección',
+                  headerRight: 'Confidencial',
+                });
+              }, Columns3),
+              this.createMenuItem('Con línea decorativa inferior', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showHeader: true,
+                  headerLine: true,
+                });
+              }, Minus),
+              this.createMenuItem('Quitar encabezado', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showHeader: false,
+                });
+              }, Trash2),
+            );
+          },
+        }),
+        this.createDropdown({
+          title: 'Insertar o editar el pie de página del documento',
+          caption: 'Pie de pág.',
+          face: lucideSvg(PanelBottom, 18),
+          large: true,
+          isDisabled: () => !this.isAllowed('allowPageSettings'),
+          menuClassName: 'cde-tb-menu--list',
+          build: (menu) => {
+            menu.append(
+              this.createMenuItem('Personalizar pie de página…', () => {
+                openHeaderFooterModal({
+                  config: getCurConfig(),
+                  initialTab: 'footer',
+                  onApply: (cfg) => this.pageLayout?.setHeaderFooter?.(cfg),
+                });
+              }, Sliders),
+              this.createMenuItem('Estilo simple (Confidencial)', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showFooter: true,
+                  footerLeft: 'Confidencial',
+                });
+              }, FileText),
+              this.createMenuItem('Con fecha y numeración', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showFooter: true,
+                  footerLeft: new Date().toLocaleDateString('es-ES'),
+                  pageNumberFormat: 'page_x',
+                  pageNumberPosition: 'footer-right',
+                });
+              }, Calendar),
+              this.createMenuItem('Con línea decorativa superior', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showFooter: true,
+                  footerLine: true,
+                });
+              }, Minus),
+              this.createMenuItem('Quitar pie de página', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showFooter: false,
+                });
+              }, Trash2),
+            );
+          },
+        }),
+        this.createDropdown({
+          title: 'Insertar números de página en el documento',
+          caption: 'Núm. de pág.',
+          face: lucideSvg(Hash, 18),
+          large: true,
+          isDisabled: () => !this.isAllowed('allowPageSettings'),
+          menuClassName: 'cde-tb-menu--list',
+          build: (menu) => {
+            menu.append(
+              this.createMenuItem('Personalizar números de página…', () => {
+                openHeaderFooterModal({
+                  config: getCurConfig(),
+                  initialTab: 'pageNumber',
+                  onApply: (cfg) => this.pageLayout?.setHeaderFooter?.(cfg),
+                });
+              }, Hash),
+              this.createMenuItem('Al final de la página (Derecha)', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showFooter: true,
+                  pageNumberFormat: 'page_x',
+                  pageNumberPosition: 'footer-right',
+                });
+              }, PanelBottom),
+              this.createMenuItem('Al final de la página (Centro)', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showFooter: true,
+                  pageNumberFormat: 'page_x',
+                  pageNumberPosition: 'footer-center',
+                });
+              }, AlignCenter),
+              this.createMenuItem('En el encabezado (Superior derecha)', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showHeader: true,
+                  pageNumberFormat: 'page_x',
+                  pageNumberPosition: 'header-right',
+                });
+              }, PanelTop),
+              this.createMenuItem('Formato: Página X de Y', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  showFooter: true,
+                  pageNumberFormat: 'page_x_of_y',
+                  pageNumberPosition: 'footer-right',
+                });
+              }, FileText),
+              this.createMenuItem('Quitar números de página', () => {
+                this.pageLayout?.setHeaderFooter?.({
+                  pageNumberFormat: 'none',
+                });
+              }, Trash2),
+            );
+          },
+        }),
+      );
+      hfBody.appendChild(hfRow);
+      panel.appendChild(headerFooterSec);
+    }
 
     // 5. Texto y Bloques
     const blocks = this.createSection('Texto');
@@ -1758,7 +2036,7 @@ export class Toolbar {
         const footer = document.createElement('div');
         footer.className = 'cde-tb-menu__footer';
         footer.appendChild(
-          this.createMenuItem('Insertar tabla…', () => this.promptInsertTable()),
+          this.createMenuItem('Insertar tabla…', () => this.promptInsertTable(), LucideTable),
         );
 
         menu.append(label, grid, quickLabel, quickRow, footer);
@@ -3320,6 +3598,8 @@ export class Toolbar {
       this.closeCombos();
       if (willOpen) {
         options.onOpen?.();
+        menu.innerHTML = '';
+        options.build(menu, close);
         menu.classList.remove('hidden');
         root.classList.add('is-open');
         this.openCombo = root;

@@ -1,6 +1,7 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import type { PageMetrics } from './pageMetrics';
+import type { HeaderFooterConfig } from '../types';
 
 export interface VirtualBreak {
   pos: number;
@@ -197,11 +198,26 @@ export function estimateRenderedPageCount(
   return Math.max(1, Math.ceil(height / stride));
 }
 
+function formatPageNum(format: string | undefined, current: number, total: number): string {
+  switch (format) {
+    case 'simple':
+      return String(current);
+    case 'page_x_of_y':
+      return `Página ${current} de ${total}`;
+    case 'none':
+      return '';
+    case 'page_x':
+    default:
+      return `Página ${current}`;
+  }
+}
+
 export function syncVirtualSheets(
   stageEl: HTMLElement,
   metricsResolver: PageMetrics | ((pageIndex: number) => PageMetrics),
   pageCount: number,
   gapPx: number,
+  headerFooter?: HeaderFooterConfig,
 ): void {
   let sheetsRoot = stageEl.querySelector<HTMLElement>('.cde-virtual-sheets');
 
@@ -232,10 +248,78 @@ export function syncVirtualSheets(
       sheet.style.marginBottom = `${gapPx}px`;
     }
 
-    const num = document.createElement('span');
-    num.className = 'cde-virtual-sheet__num';
-    num.textContent = `Página ${i + 1}`;
-    sheet.appendChild(num);
+    const isFirstPage = i === 0;
+    const skipFirst = Boolean(headerFooter?.differentFirstPage && isFirstPage);
+
+    // 1. Header (Encabezado)
+    if (headerFooter?.showHeader && !skipFirst) {
+      const headerEl = document.createElement('div');
+      headerEl.className = 'cde-virtual-sheet__header';
+      if (headerFooter.headerLine) headerEl.classList.add('has-line');
+
+      const left = document.createElement('span');
+      left.className = 'cde-virtual-sheet__header-left';
+      left.textContent = headerFooter.headerLeft ?? '';
+
+      const center = document.createElement('span');
+      center.className = 'cde-virtual-sheet__header-center';
+      center.textContent = headerFooter.headerCenter ?? '';
+
+      const right = document.createElement('span');
+      right.className = 'cde-virtual-sheet__header-right';
+      right.textContent = headerFooter.headerRight ?? '';
+
+      if (headerFooter.pageNumberPosition?.startsWith('header-')) {
+        const pgText = formatPageNum(headerFooter.pageNumberFormat, i + 1, pageCount);
+        if (headerFooter.pageNumberPosition === 'header-left') left.textContent = pgText;
+        else if (headerFooter.pageNumberPosition === 'header-center') center.textContent = pgText;
+        else if (headerFooter.pageNumberPosition === 'header-right') right.textContent = pgText;
+      }
+
+      headerEl.append(left, center, right);
+      sheet.appendChild(headerEl);
+    }
+
+    // 2. Footer (Pie de página)
+    if (headerFooter?.showFooter && !skipFirst) {
+      const footerEl = document.createElement('div');
+      footerEl.className = 'cde-virtual-sheet__footer';
+      if (headerFooter.footerLine) footerEl.classList.add('has-line');
+
+      const left = document.createElement('span');
+      left.className = 'cde-virtual-sheet__footer-left';
+      left.textContent = headerFooter.footerLeft ?? '';
+
+      const center = document.createElement('span');
+      center.className = 'cde-virtual-sheet__footer-center';
+      center.textContent = headerFooter.footerCenter ?? '';
+
+      const right = document.createElement('span');
+      right.className = 'cde-virtual-sheet__footer-right';
+      right.textContent = headerFooter.footerRight ?? '';
+
+      const pos = headerFooter.pageNumberPosition ?? 'footer-right';
+      if (pos.startsWith('footer-')) {
+        const pgText = formatPageNum(headerFooter.pageNumberFormat ?? 'page_x', i + 1, pageCount);
+        if (pos === 'footer-left') left.textContent = pgText;
+        else if (pos === 'footer-center') center.textContent = pgText;
+        else if (pos === 'footer-right') right.textContent = pgText;
+      }
+
+      footerEl.append(left, center, right);
+      sheet.appendChild(footerEl);
+    } else if (!headerFooter) {
+      // Default fallback
+      const num = document.createElement('span');
+      num.className = 'cde-virtual-sheet__num';
+      num.textContent = `Página ${i + 1}`;
+      sheet.appendChild(num);
+    } else if (!skipFirst && headerFooter.pageNumberFormat && headerFooter.pageNumberFormat !== 'none') {
+      const num = document.createElement('span');
+      num.className = 'cde-virtual-sheet__num';
+      num.textContent = formatPageNum(headerFooter.pageNumberFormat, i + 1, pageCount);
+      sheet.appendChild(num);
+    }
 
     sheetsRoot.appendChild(sheet);
 

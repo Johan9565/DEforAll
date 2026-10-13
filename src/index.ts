@@ -13,7 +13,7 @@ export {
 } from './DocumentEditor';
 export { Ruler, type RulerOptions } from './Ruler';
 
-export type { PageData, ActivePageFocus } from './types';
+export type { PageData, ActivePageFocus, HeaderFooterConfig } from './types';
 
 export { Toolbar, type ToolbarOptions } from './Toolbar';
 export {
@@ -70,5 +70,10 @@ export {
   createWidgetTableAttrs,
   type WidgetTableAttrs,
 } from './extensions/widgetTable/model';
+
+export {
+  openFilerobotModal,
+  type FilerobotModalOptions,
+} from './utils/filerobotEditor';
 
 export type { Editor, JSONContent, Extensions } from '@tiptap/core';

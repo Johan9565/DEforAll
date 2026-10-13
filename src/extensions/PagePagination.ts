@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { PageConfig, PageMargins, PageOrientation, PageSize, PaginationResult } from '../types';
+import type { HeaderFooterConfig, PageConfig, PageMargins, PageOrientation, PageSize, PaginationResult } from '../types';
 import { measurePageMetrics, resolvePageMetrics, type PageMetrics } from './pageMetrics';
 import { syncVirtualSheets } from './virtualPageLayout';
 
@@ -12,6 +12,7 @@ export interface PagePaginationOptions {
   margins?: PageMargins;
   gapPx?: number;
   getPageConfig?: (pageIndex: number) => PageConfig | undefined;
+  getHeaderFooter?: () => HeaderFooterConfig | undefined;
   onPaginated?: (result: PaginationResult) => void;
 }
 
@@ -381,7 +382,13 @@ export const PagePagination = Extension.create<
 
             const container = stageEl();
             if (container) {
-              syncVirtualSheets(container, (idx) => getPageMetrics(idx), pageCount, gapPx);
+              syncVirtualSheets(
+                container,
+                (idx) => getPageMetrics(idx),
+                pageCount,
+                gapPx,
+                extension.options.getHeaderFooter?.(),
+              );
               container.dataset.pageCount = String(pageCount);
             }
 

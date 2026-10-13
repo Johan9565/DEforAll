@@ -1306,3 +1306,74 @@
   display: none !important;
   pointer-events: none !important;
 }
+
+/* Virtual Sheet Headers & Footers */
+.cde-virtual-sheet__header {
+  position: absolute;
+  top: 24px;
+  left: 48px;
+  right: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  user-select: none;
+  pointer-events: none;
+  padding-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.cde-virtual-sheet__header.has-line {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.cde-virtual-sheet__header-left,
+.cde-virtual-sheet__footer-left {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cde-virtual-sheet__header-center,
+.cde-virtual-sheet__footer-center {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cde-virtual-sheet__header-right,
+.cde-virtual-sheet__footer-right {
+  flex: 1;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cde-virtual-sheet__footer {
+  position: absolute;
+  bottom: 24px;
+  left: 48px;
+  right: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  user-select: none;
+  pointer-events: none;
+  padding-top: 6px;
+  box-sizing: border-box;
+}
+
+.cde-virtual-sheet__footer.has-line {
+  border-top: 1px solid #cbd5e1;
+}
+

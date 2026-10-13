@@ -2,14 +2,17 @@ import type { Editor } from '@tiptap/core';
 import type { DocumentRestrictions } from './types';
 import { Fragment } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
-import { IMAGE_FILTERS, openCropModal } from './utils/imageEffects';
+import { IMAGE_FILTERS } from './utils/imageEffects';
+import { openFilerobotModal } from './utils/filerobotEditor';
 import { optimizeImage } from './utils/imageOptimizer';
+import { openLinkModal } from './utils/linkModal';
 import {
   lucideSvg,
   Scissors,
   Copy,
   ClipboardPaste,
   Crop,
+  Sliders,
   Palette,
   Maximize2,
   RotateCcw,
@@ -316,13 +319,34 @@ export class EditorContextMenu {
 
     menu.appendChild(this.createHeading('Imagen'));
 
-    // 1. Recortar (Crop)
+    // 1. Editar imagen completa (Filerobot)
+    menu.appendChild(
+      this.createMenuItem(
+        'Editar imagen (Filerobot)…',
+        () => {
+          openFilerobotModal({
+            src,
+            onSave: (saved) => {
+              editor.chain().focus().updateImage({ src: saved }).run();
+            },
+          });
+        },
+        { icon: Sliders },
+      ),
+    );
+
+    // 2. Recortar (Crop con Filerobot)
     menu.appendChild(
       this.createMenuItem(
         'Recortar imagen…',
         () => {
-          openCropModal(src, (cropped) => {
-            editor.chain().focus().updateImage({ src: cropped }).run();
+          openFilerobotModal({
+            src,
+            defaultTab: 'Adjust',
+            defaultTool: 'Crop',
+            onSave: (cropped) => {
+              editor.chain().focus().updateImage({ src: cropped }).run();
+            },
           });
         },
         { icon: Crop },
@@ -869,11 +893,20 @@ export class EditorContextMenu {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.addEventListener('change', async () => {
+    input.addEventListener('change', () => {
       const file = input.files?.[0];
       if (!file) return;
-      const opt = await optimizeImage(file);
-      editor.chain().focus().setImage({ src: opt.dataUrl }).run();
+      const reader = new FileReader();
+      reader.onload = () => {
+        const rawUrl = reader.result as string;
+        openFilerobotModal({
+          src: rawUrl,
+          onSave: (saved) => {
+            editor.chain().focus().setImage({ src: saved }).run();
+          },
+        });
+      };
+      reader.readAsDataURL(file);
     });
     input.click();
   }
@@ -1339,18 +1372,6 @@ export class EditorContextMenu {
   private editLink(): void {
     const editor = this.getEditor();
     if (!editor) return;
-    const previous = editor.getAttributes('link').href as string | undefined;
-    const url = window.prompt('URL del enlace', previous ?? 'https://');
-    if (url === null) return;
-    if (url.trim() === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      return;
-    }
-    editor
-      .chain()
-      .focus()
-      .extendMarkRange('link')
-      .setLink({ href: url.trim() })
-      .run();
+    openLinkModal({ editor });
   }
 }

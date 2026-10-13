@@ -9,6 +9,7 @@ import { EditorContextMenu } from './EditorContextMenu';
 import { createDocumentExtensions } from './extensions';
 import { PagePagination } from './extensions/PagePagination';
 import { measurePageMetrics, resolvePageMetrics, type PageMetrics } from './extensions/pageMetrics';
+import { syncVirtualSheets } from './extensions/virtualPageLayout';
 import { Ruler } from './Ruler';
 import {
   findTextMatches,
@@ -28,6 +29,7 @@ import type {
   PaginationResult,
   DocumentRestrictions,
   PageConfig,
+  HeaderFooterConfig,
 } from './types';
 import { EMPTY_DOC } from './types';
 import './styles/document.css';
@@ -74,6 +76,7 @@ export interface DocumentEditorOptions {
   /** Dual horizontal & vertical interactive margin rulers. Defaults to true. */
   ruler?: boolean;
   pageConfigs?: Record<number, PageConfig>;
+  headerFooter?: Partial<HeaderFooterConfig>;
   placeholder?: string;
   extensions?: Extensions;
   onUpdate?: (data: DocumentEditorUpdatePayload) => void;
@@ -98,6 +101,7 @@ export class DocumentEditor {
   private ruler: Ruler | null = null;
   private restrictions: DocumentRestrictions;
   private pageConfigs: Map<number, PageConfig> = new Map();
+  private headerFooterConfig: HeaderFooterConfig;
 
   private pageSize: PageSize;
   private orientation: PageOrientation;
@@ -136,6 +140,22 @@ export class DocumentEditor {
       ...options.restrictions,
     };
     this.editable = this.restrictions.editable !== false;
+    this.headerFooterConfig = {
+      showHeader: false,
+      headerLeft: '',
+      headerCenter: '',
+      headerRight: '',
+      headerLine: false,
+      showFooter: true,
+      footerLeft: '',
+      footerCenter: '',
+      footerRight: '',
+      footerLine: false,
+      pageNumberFormat: 'page_x',
+      pageNumberPosition: 'footer-right',
+      differentFirstPage: false,
+      ...options.headerFooter,
+    };
     this.onUpdate = options.onUpdate;
     this.onPaginated = options.onPaginated;
     this.metrics = measurePageMetrics(this.pageSize, 24, this.orientation, this.margins);
@@ -188,6 +208,7 @@ export class DocumentEditor {
           margins: this.margins,
           gapPx: 24,
           getPageConfig: (idx) => this.pageConfigs.get(idx),
+          getHeaderFooter: () => this.headerFooterConfig,
           onPaginated: (result) => {
             this.pageCount = result.pageCount;
             this.workspaceElement.dataset.pageCount = String(result.pageCount);
@@ -315,6 +336,8 @@ export class DocumentEditor {
           toggleRuler: () => this.toggleRuler(),
           getPagination: () => this.paginationEnabled,
           setPagination: (value) => this.setPagination(value),
+          getHeaderFooter: () => this.getHeaderFooter(),
+          setHeaderFooter: (cfg) => this.setHeaderFooter(cfg),
         },
         documentSearch: {
           find: (term, caseSensitive) => this.findInDocument(term, caseSensitive),
@@ -529,6 +552,24 @@ export class DocumentEditor {
 
   public toggleRuler(): void {
     this.ruler?.toggle();
+  }
+
+  public getHeaderFooter(): HeaderFooterConfig {
+    return { ...this.headerFooterConfig };
+  }
+
+  public setHeaderFooter(config: Partial<HeaderFooterConfig>): void {
+    this.headerFooterConfig = { ...this.headerFooterConfig, ...config };
+    syncVirtualSheets(
+      this.stageElement,
+      (idx) => this.getPageMetrics(idx),
+      this.pageCount,
+      24,
+      this.headerFooterConfig,
+    );
+    const storage = this.editor.storage.pagePagination as any;
+    storage?.scheduleRefresh?.();
+    this.emitUpdate();
   }
 
   private applyLayoutStyles(): void {

@@ -64,3 +64,27 @@ export interface DocumentRestrictions {
   /** If false, link insertion is disabled. Defaults to true. */
   allowLinks?: boolean;
 }
+
+export interface HeaderFooterConfig {
+  showHeader: boolean;
+  headerLeft?: string;
+  headerCenter?: string;
+  headerRight?: string;
+  headerLine?: boolean;
+
+  showFooter: boolean;
+  footerLeft?: string;
+  footerCenter?: string;
+  footerRight?: string;
+  footerLine?: boolean;
+
+  pageNumberFormat?: 'none' | 'simple' | 'page_x' | 'page_x_of_y';
+  pageNumberPosition?:
+    | 'header-left'
+    | 'header-center'
+    | 'header-right'
+    | 'footer-left'
+    | 'footer-center'
+    | 'footer-right';
+  differentFirstPage?: boolean;
+}
