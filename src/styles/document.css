@@ -1205,12 +1205,11 @@
 
 .cde-virtual-sheet__num {
   position: absolute;
-  bottom: 24px;
-  right: 32px;
   font-size: 11px;
   color: #94a3b8;
   font-family: ui-sans-serif, system-ui, sans-serif;
   user-select: none;
+  pointer-events: none;
 }
 
 .cde-editor-layer {
@@ -1307,12 +1306,21 @@
   pointer-events: none !important;
 }
 
+/* Overlay de encabezados y pies de página — z-index superior al contenido */
+.cde-virtual-hf-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* Virtual Sheet Headers & Footers */
+/* top/bottom/left/right/height se establecen como estilos en línea desde JS (métricas reales) */
 .cde-virtual-sheet__header {
   position: absolute;
-  top: 24px;
-  left: 48px;
-  right: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1323,6 +1331,7 @@
   pointer-events: none;
   padding-bottom: 6px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .cde-virtual-sheet__header.has-line {
@@ -1358,9 +1367,6 @@
 
 .cde-virtual-sheet__footer {
   position: absolute;
-  bottom: 24px;
-  left: 48px;
-  right: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1371,6 +1377,7 @@
   pointer-events: none;
   padding-top: 6px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .cde-virtual-sheet__footer.has-line {

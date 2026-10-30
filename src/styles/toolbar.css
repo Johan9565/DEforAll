@@ -93,6 +93,29 @@
   border-radius: 2px;
 }
 
+/* Contextual Image Format Tab */
+.cde-toolbar [role='tab'][hidden] {
+  display: none !important;
+}
+
+.cde-toolbar [role='tab'].cde-tb-tab--image {
+  color: #7c3aed;
+  font-weight: 500;
+}
+
+.cde-toolbar [role='tab'].cde-tb-tab--image:hover {
+  color: #6d28d9;
+}
+
+.cde-toolbar [role='tab'].cde-tb-tab--image[aria-selected='true'] {
+  color: #6d28d9;
+  font-weight: 600;
+}
+
+.cde-toolbar [role='tab'].cde-tb-tab--image[aria-selected='true']::after {
+  border-bottom-color: #7c3aed;
+}
+
 /* Panels */
 .cde-toolbar [role='tabpanel'] {
   display: flex;

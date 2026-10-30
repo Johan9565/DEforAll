@@ -1,5 +1,8 @@
 import { optimizeImage } from './utils/imageOptimizer';
 import type { Editor } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { IMAGE_FILTERS } from './utils/imageEffects';
 import {
   changeSelectionCase,
   FONT_SIZE_STEPS,
@@ -122,6 +125,10 @@ import {
   PanelBottom,
   Hash,
   Upload,
+  Crop,
+  Sparkles,
+  ArrowUpDown,
+  MoveHorizontal,
 } from './icons';
 import { openLinkModal } from './utils/linkModal';
 import { openIconPickerModal } from './utils/iconPickerModal';
@@ -175,7 +182,7 @@ export interface ToolbarOptions {
   onPrint?: () => void;
 }
 
-type TabId = 'home' | 'insert' | 'table' | 'layout' | 'options' | 'view';
+type TabId = 'home' | 'insert' | 'table' | 'image' | 'layout' | 'options' | 'view';
 
 interface ToolbarAction {
   title: string;
@@ -328,6 +335,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'home', label: 'Inicio' },
   { id: 'insert', label: 'Insertar' },
   { id: 'table', label: 'Tabla' },
+  { id: 'image', label: 'Formato de imagen' },
   { id: 'layout', label: 'Disposición de página' },
   { id: 'options', label: 'Opciones del documento' },
   { id: 'view', label: 'Vista' },
@@ -381,6 +389,11 @@ export class Toolbar {
   private readonly onPrintProp?: () => void;
   private restrictionsBadgeEl: HTMLElement | null = null;
   private activeTab: TabId = 'home';
+  private previousTabBeforeImage: TabId = 'home';
+  private isImageSelected = false;
+  private lastSelectedImagePos: number | null = null;
+  private imgWidthInput: HTMLInputElement | null = null;
+  private imgHeightInput: HTMLInputElement | null = null;
   private readonly panels = new Map<TabId, HTMLElement>();
   private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
   private openCombo: HTMLElement | null = null;
@@ -582,6 +595,12 @@ export class Toolbar {
         btn.classList.add('font-semibold', 'after:absolute', 'after:inset-x-0', 'after:bottom-0', 'after:border-b-2', 'after:border-ribbon-accent', 'after:rounded-sm');
       }
 
+      if (tab.id === 'image') {
+        btn.hidden = true;
+        btn.style.display = 'none';
+        btn.classList.add('cde-tb-tab--image');
+      }
+
       btn.addEventListener('mousedown', (e) => e.preventDefault());
       btn.addEventListener('click', () => this.setActiveTab(tab.id));
 
@@ -599,6 +618,7 @@ export class Toolbar {
     const home = this.buildHomePanel();
     const insert = this.buildInsertPanel();
     const table = this.buildTablePanel();
+    const image = this.buildImagePanel();
     const layout = this.buildLayoutPanel();
     const options = this.buildOptionsPanel();
     const view = this.buildViewPanel();
@@ -606,6 +626,7 @@ export class Toolbar {
     this.panels.set('home', home);
     this.panels.set('insert', insert);
     this.panels.set('table', table);
+    this.panels.set('image', image);
     this.panels.set('layout', layout);
     this.panels.set('options', options);
     this.panels.set('view', view);
@@ -2516,6 +2537,696 @@ export class Toolbar {
     return panel;
   }
 
+  private getSelectedImage(): {
+    node: ProseMirrorNode;
+    pos: number;
+    attrs: {
+      src: string;
+      alt?: string | null;
+      title?: string | null;
+      width?: number | string | null;
+      height?: number | string | null;
+      alignment?: 'left' | 'center' | 'right';
+      wrap?: 'none' | 'left' | 'right';
+      filter?: string;
+    };
+  } | null {
+    const editor = this.editor();
+    if (!editor || editor.isDestroyed) return null;
+
+    const { selection, doc } = editor.state;
+    if (selection instanceof NodeSelection && selection.node?.type?.name === 'image') {
+      return {
+        node: selection.node,
+        pos: selection.from,
+        attrs: selection.node.attrs as any,
+      };
+    }
+
+    if (editor.isActive('image')) {
+      let found: { node: ProseMirrorNode; pos: number; attrs: any } | null = null;
+      let count = 0;
+      doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+        if (node.type.name === 'image') {
+          count++;
+          if (!found) {
+            found = { node, pos, attrs: node.attrs };
+          }
+        }
+      });
+      if (found && count === 1) return found;
+
+      const attrs = editor.getAttributes('image');
+      if (attrs && attrs.src) {
+        return {
+          node: null as any,
+          pos: selection.from,
+          attrs: attrs as any,
+        };
+      }
+    }
+
+    // Check if an image is highlighted or selected in the DOM as fallback
+    const selectedBox = this.root.ownerDocument?.querySelector('.cde-image-box.is-selected');
+    if (selectedBox) {
+      try {
+        const domPos = editor.view.posAtDOM(selectedBox, 0);
+        for (const offset of [0, -1, 1, -2, 2]) {
+          const testPos = Math.max(0, domPos + offset);
+          const node = doc.nodeAt(testPos);
+          if (node && node.type.name === 'image') {
+            return {
+              node,
+              pos: testPos,
+              attrs: node.attrs as any,
+            };
+          }
+        }
+      } catch {
+        // posAtDOM fallback
+      }
+    }
+
+    return null;
+  }
+
+  private updateSelectedImage(options: {
+    src?: string;
+    alt?: string;
+    title?: string;
+    width?: number | string | null;
+    height?: number | string | null;
+    alignment?: 'left' | 'center' | 'right';
+    wrap?: 'none' | 'left' | 'right';
+    filter?: string;
+  }): void {
+    const editor = this.editor();
+    if (!editor || editor.isDestroyed) return;
+
+    const img = this.getSelectedImage();
+    if (!img) return;
+
+    const { tr } = editor.state;
+    const currentAttrs = img.node ? img.node.attrs : img.attrs;
+    const newAttrs = {
+      ...currentAttrs,
+      ...options,
+    };
+
+    try {
+      tr.setNodeMarkup(img.pos, undefined, newAttrs);
+      tr.setSelection(NodeSelection.create(tr.doc, img.pos));
+      editor.view.dispatch(tr);
+    } catch {
+      editor.chain().focus().updateImage(options).run();
+    }
+    this.syncState();
+  }
+
+  private deleteSelectedImage(): void {
+    const editor = this.editor();
+    if (!editor || editor.isDestroyed) return;
+    const img = this.getSelectedImage();
+    if (!img) return;
+    const nodeSize = img.node?.nodeSize ?? 1;
+    editor.chain().focus().deleteRange({
+      from: img.pos,
+      to: img.pos + nodeSize,
+    }).run();
+    this.syncState();
+  }
+
+  private buildImagePanel(): HTMLElement {
+    const panel = this.createPanel('image');
+    const disabled = () => !this.getSelectedImage() || !this.isAllowed('allowImages');
+
+    // Hidden file input for "Cambiar imagen"
+    const changeFileInput = document.createElement('input');
+    changeFileInput.type = 'file';
+    changeFileInput.accept = 'image/*';
+    changeFileInput.className = 'hidden';
+    changeFileInput.addEventListener('change', async () => {
+      const file = changeFileInput.files?.[0];
+      if (!file) return;
+      try {
+        const opt = await optimizeImage(file);
+        this.updateSelectedImage({ src: opt.dataUrl });
+      } catch (err) {
+        console.error('Error al reemplazar la imagen:', err);
+      } finally {
+        changeFileInput.value = '';
+      }
+    });
+    panel.appendChild(changeFileInput);
+
+    // ──────────────────────────────────────────────
+    // 1. Ajustar
+    // ──────────────────────────────────────────────
+    const adjustSec = this.createSection('Ajustar');
+    const adjustBody = adjustSec.querySelector('[data-section-body]')!;
+    const adjustRow = document.createElement('div');
+    adjustRow.className = 'flex flex-wrap items-center gap-1';
+
+    // 1.1 Botón Grande: Editar Imagen (Filerobot)
+    adjustRow.appendChild(
+      this.createButton(
+        {
+          title: 'Abrir editor avanzado con filtros, recorte, ajustes de color y anotaciones',
+          label: `${lucideSvg(Sliders, 18)}<span class="text-[10px] font-medium text-center leading-tight">Editar<br>imagen</span>`,
+          isDisabled: disabled,
+          run: () => {
+            const img = this.getSelectedImage();
+            if (!img) return;
+            openFilerobotModal({
+              src: img.attrs.src,
+              onSave: (savedSrc) => {
+                this.updateSelectedImage({ src: savedSrc });
+              },
+            });
+          },
+        },
+        BTN_LG,
+      ),
+    );
+
+    // 1.2 Botón Grande: Recortar (Crop)
+    adjustRow.appendChild(
+      this.createButton(
+        {
+          title: 'Recortar la imagen seleccionada',
+          label: `${lucideSvg(Crop, 18)}<span class="text-[10px] font-medium text-center leading-tight">Recortar</span>`,
+          isDisabled: disabled,
+          run: () => {
+            const img = this.getSelectedImage();
+            if (!img) return;
+            openFilerobotModal({
+              src: img.attrs.src,
+              defaultTab: 'Adjust',
+              defaultTool: 'Crop',
+              onSave: (croppedSrc) => {
+                this.updateSelectedImage({ src: croppedSrc });
+              },
+            });
+          },
+        },
+        BTN_LG,
+      ),
+    );
+
+    // 1.3 Botones apilados (Optimizar, Cambiar foto, Restablecer)
+    const adjustCol = document.createElement('div');
+    adjustCol.className = 'flex flex-col gap-0.5 justify-center';
+
+    adjustCol.appendChild(
+      this.createButton(
+        {
+          title: 'Optimizar y comprimir el tamaño de la imagen (formato WebP)',
+          label: `${lucideSvg(Sparkles, 13)}<span>Optimizar</span>`,
+          isDisabled: disabled,
+          run: async () => {
+            const img = this.getSelectedImage();
+            if (!img) return;
+            const opt = await optimizeImage(img.attrs.src);
+            this.updateSelectedImage({ src: opt.dataUrl });
+          },
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    adjustCol.appendChild(
+      this.createButton(
+        {
+          title: 'Reemplazar esta foto por otra imagen de su equipo',
+          label: `${lucideSvg(Upload, 13)}<span>Cambiar foto</span>`,
+          isDisabled: disabled,
+          run: () => {
+            changeFileInput.click();
+          },
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    adjustCol.appendChild(
+      this.createButton(
+        {
+          title: 'Restablecer dimensiones originales y quitar efectos aplicados',
+          label: `${lucideSvg(RotateCcw, 13)}<span>Restablecer</span>`,
+          isDisabled: disabled,
+          run: () => {
+            this.updateSelectedImage({
+              width: null,
+              height: null,
+              filter: 'none',
+            });
+          },
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    adjustRow.appendChild(adjustCol);
+    adjustBody.appendChild(adjustRow);
+    panel.appendChild(adjustSec);
+
+    // ──────────────────────────────────────────────
+    // 2. Estilos y Filtros de Imagen
+    // ──────────────────────────────────────────────
+    const stylesSec = this.createSection('Estilos y Filtros');
+    const stylesBody = stylesSec.querySelector('[data-section-body]')!;
+    const stylesRow = document.createElement('div');
+    stylesRow.className = 'flex flex-wrap items-center gap-1';
+
+    stylesRow.appendChild(
+      this.createDropdown({
+        title: 'Aplicar filtros de color y efectos artísticos a la imagen',
+        caption: 'Filtros',
+        face: lucideSvg(Palette, 18),
+        large: true,
+        isDisabled: disabled,
+        menuClassName: 'cde-tb-menu--list min-w-[11rem]',
+        build: (menu) => {
+          menu.appendChild(this.createMenuHeading('Filtros artísticos'));
+          const currentFilter = this.getSelectedImage()?.attrs.filter || 'none';
+          for (const f of IMAGE_FILTERS) {
+            const isCurrent = currentFilter === f.id;
+            const item = this.createMenuItem(
+              `${f.label}${isCurrent ? ' ✓' : ''}`,
+              () => {
+                this.updateSelectedImage({ filter: f.id });
+              },
+              Palette,
+            );
+            if (isCurrent) {
+              item.classList.add('font-semibold', 'bg-blue-50', 'text-blue-700');
+            }
+            menu.appendChild(item);
+          }
+        },
+      }),
+    );
+
+    const quickFiltersCol = document.createElement('div');
+    quickFiltersCol.className = 'flex flex-col gap-0.5 justify-center';
+
+    const quickFiltersRow1 = document.createElement('div');
+    quickFiltersRow1.className = 'flex items-center gap-0.5';
+
+    const quickFiltersRow2 = document.createElement('div');
+    quickFiltersRow2.className = 'flex items-center gap-0.5';
+
+    const popularFilters = [
+      { id: 'none', label: 'Normal' },
+      { id: 'grayscale', label: 'B/N' },
+      { id: 'sepia', label: 'Sepia' },
+      { id: 'contrast', label: 'Contraste' },
+      { id: 'bright', label: 'Luminoso' },
+      { id: 'vintage', label: 'Vintage' },
+    ];
+
+    popularFilters.slice(0, 3).forEach((f) => {
+      quickFiltersRow1.appendChild(
+        this.createButton(
+          {
+            title: `Aplicar filtro ${f.label}`,
+            label: `<span>${f.label}</span>`,
+            isActive: () => (this.getSelectedImage()?.attrs.filter || 'none') === f.id,
+            isDisabled: disabled,
+            run: () => this.updateSelectedImage({ filter: f.id }),
+          },
+          BTN_TEXT,
+        ),
+      );
+    });
+
+    popularFilters.slice(3, 6).forEach((f) => {
+      quickFiltersRow2.appendChild(
+        this.createButton(
+          {
+            title: `Aplicar filtro ${f.label}`,
+            label: `<span>${f.label}</span>`,
+            isActive: () => (this.getSelectedImage()?.attrs.filter || 'none') === f.id,
+            isDisabled: disabled,
+            run: () => this.updateSelectedImage({ filter: f.id }),
+          },
+          BTN_TEXT,
+        ),
+      );
+    });
+
+    quickFiltersCol.append(quickFiltersRow1, quickFiltersRow2);
+    stylesRow.appendChild(quickFiltersCol);
+    stylesBody.appendChild(stylesRow);
+    panel.appendChild(stylesSec);
+
+    // ──────────────────────────────────────────────
+    // 3. Organizar
+    // ──────────────────────────────────────────────
+    const arrangeSec = this.createSection('Organizar');
+    const arrangeBody = arrangeSec.querySelector('[data-section-body]')!;
+    const arrangeRow = document.createElement('div');
+    arrangeRow.className = 'flex flex-wrap items-center gap-1.5';
+
+    arrangeRow.appendChild(
+      this.createDropdown({
+        title: 'Modo de ajuste del texto alrededor de la imagen',
+        caption: 'Ajuste de texto',
+        face: lucideSvg(WrapText, 18),
+        large: true,
+        isDisabled: disabled,
+        menuClassName: 'cde-tb-menu--list min-w-[13rem]',
+        build: (menu) => {
+          menu.appendChild(this.createMenuHeading('Ajuste con el texto'));
+          const currentWrap = this.getSelectedImage()?.attrs.wrap || 'none';
+          const wraps: { id: 'none' | 'left' | 'right'; label: string }[] = [
+            { id: 'none', label: 'En línea con el texto (Bloque)' },
+            { id: 'left', label: 'Flotar a la izquierda (Cuadrado)' },
+            { id: 'right', label: 'Flotar a la derecha (Cuadrado)' },
+          ];
+          for (const w of wraps) {
+            const isCurrent = currentWrap === w.id;
+            const item = this.createMenuItem(
+              `${w.label}${isCurrent ? ' ✓' : ''}`,
+              () => {
+                this.updateSelectedImage({ wrap: w.id });
+              },
+              WrapText,
+            );
+            if (isCurrent) {
+              item.classList.add('font-semibold', 'bg-blue-50', 'text-blue-700');
+            }
+            menu.appendChild(item);
+          }
+        },
+      }),
+    );
+
+    const alignCol = document.createElement('div');
+    alignCol.className = 'flex flex-col gap-0.5 justify-center';
+
+    const alignRow = document.createElement('div');
+    alignRow.className = 'flex items-center gap-0.5';
+
+    alignRow.appendChild(
+      this.createButton(
+        {
+          title: 'Alinear imagen a la izquierda',
+          label: `${lucideSvg(AlignLeft, 14)}`,
+          isActive: () => (this.getSelectedImage()?.attrs.alignment || 'center') === 'left',
+          isDisabled: disabled,
+          run: () => this.updateSelectedImage({ alignment: 'left' }),
+        },
+        BTN,
+      ),
+    );
+
+    alignRow.appendChild(
+      this.createButton(
+        {
+          title: 'Centrar imagen',
+          label: `${lucideSvg(AlignCenter, 14)}`,
+          isActive: () => (this.getSelectedImage()?.attrs.alignment || 'center') === 'center',
+          isDisabled: disabled,
+          run: () => this.updateSelectedImage({ alignment: 'center' }),
+        },
+        BTN,
+      ),
+    );
+
+    alignRow.appendChild(
+      this.createButton(
+        {
+          title: 'Alinear imagen a la derecha',
+          label: `${lucideSvg(AlignRight, 14)}`,
+          isActive: () => (this.getSelectedImage()?.attrs.alignment || 'center') === 'right',
+          isDisabled: disabled,
+          run: () => this.updateSelectedImage({ alignment: 'right' }),
+        },
+        BTN,
+      ),
+    );
+
+    const wrapQuickRow = document.createElement('div');
+    wrapQuickRow.className = 'flex items-center gap-0.5';
+
+    wrapQuickRow.appendChild(
+      this.createButton(
+        {
+          title: 'En línea con el texto',
+          label: `<span>En línea</span>`,
+          isActive: () => (this.getSelectedImage()?.attrs.wrap || 'none') === 'none',
+          isDisabled: disabled,
+          run: () => this.updateSelectedImage({ wrap: 'none' }),
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    wrapQuickRow.appendChild(
+      this.createButton(
+        {
+          title: 'Ajuste de texto flotante a la izquierda',
+          label: `<span>Flotar Izq</span>`,
+          isActive: () => this.getSelectedImage()?.attrs.wrap === 'left',
+          isDisabled: disabled,
+          run: () => this.updateSelectedImage({ wrap: 'left' }),
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    wrapQuickRow.appendChild(
+      this.createButton(
+        {
+          title: 'Ajuste de texto flotante a la derecha',
+          label: `<span>Flotar Der</span>`,
+          isActive: () => this.getSelectedImage()?.attrs.wrap === 'right',
+          isDisabled: disabled,
+          run: () => this.updateSelectedImage({ wrap: 'right' }),
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    alignCol.append(alignRow, wrapQuickRow);
+    arrangeRow.appendChild(alignCol);
+    arrangeBody.appendChild(arrangeRow);
+    panel.appendChild(arrangeSec);
+
+    // ──────────────────────────────────────────────
+    // 4. Tamaño
+    // ──────────────────────────────────────────────
+    const sizeSec = this.createSection('Tamaño');
+    const sizeBody = sizeSec.querySelector('[data-section-body]')!;
+    const sizeRow = document.createElement('div');
+    sizeRow.className = 'flex flex-wrap items-center gap-1.5';
+
+    const inputsBox = document.createElement('div');
+    inputsBox.className = 'flex flex-col gap-1 justify-center';
+
+    // Fila Alto
+    const heightRow = document.createElement('label');
+    heightRow.className = 'flex items-center gap-1 text-[11px] text-neutral-700 cursor-pointer select-none';
+    heightRow.innerHTML = `<span class="inline-flex items-center w-3.5 text-neutral-500">${lucideSvg(ArrowUpDown, 12)}</span><span class="w-9">Alto:</span>`;
+
+    const heightInput = document.createElement('input');
+    heightInput.type = 'number';
+    heightInput.min = '20';
+    heightInput.max = '3000';
+    heightInput.step = '10';
+    heightInput.placeholder = 'auto';
+    heightInput.className = 'w-14 h-5 px-1 py-0 text-[11px] text-right font-mono bg-white border border-neutral-300 rounded focus:border-blue-500 focus:outline-none';
+
+    const commitHeight = () => {
+      const val = parseInt(heightInput.value, 10);
+      if (!isNaN(val) && val > 0) {
+        this.updateSelectedImage({ height: val });
+      } else {
+        this.updateSelectedImage({ height: null });
+      }
+    };
+    heightInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitHeight();
+      }
+    });
+    heightInput.addEventListener('change', commitHeight);
+
+    heightRow.appendChild(heightInput);
+    const pxH = document.createElement('span');
+    pxH.className = 'text-[10px] text-neutral-500';
+    pxH.textContent = 'px';
+    heightRow.appendChild(pxH);
+
+    // Fila Ancho
+    const widthRow = document.createElement('label');
+    widthRow.className = 'flex items-center gap-1 text-[11px] text-neutral-700 cursor-pointer select-none';
+    widthRow.innerHTML = `<span class="inline-flex items-center w-3.5 text-neutral-500">${lucideSvg(MoveHorizontal, 12)}</span><span class="w-9">Ancho:</span>`;
+
+    const widthInput = document.createElement('input');
+    widthInput.type = 'number';
+    widthInput.min = '20';
+    widthInput.max = '3000';
+    widthInput.step = '10';
+    widthInput.placeholder = 'auto';
+    widthInput.className = 'w-14 h-5 px-1 py-0 text-[11px] text-right font-mono bg-white border border-neutral-300 rounded focus:border-blue-500 focus:outline-none';
+
+    const commitWidth = () => {
+      const val = parseInt(widthInput.value, 10);
+      if (!isNaN(val) && val > 0) {
+        this.updateSelectedImage({ width: val });
+      } else {
+        this.updateSelectedImage({ width: null });
+      }
+    };
+    widthInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitWidth();
+      }
+    });
+    widthInput.addEventListener('change', commitWidth);
+
+    widthRow.appendChild(widthInput);
+    const pxW = document.createElement('span');
+    pxW.className = 'text-[10px] text-neutral-500';
+    pxW.textContent = 'px';
+    widthRow.appendChild(pxW);
+
+    this.imgWidthInput = widthInput;
+    this.imgHeightInput = heightInput;
+
+    inputsBox.append(heightRow, widthRow);
+    sizeRow.appendChild(inputsBox);
+
+    const scaleCol = document.createElement('div');
+    scaleCol.className = 'flex flex-col gap-0.5 justify-center';
+
+    const scaleRow1 = document.createElement('div');
+    scaleRow1.className = 'flex items-center gap-0.5';
+
+    const scaleRow2 = document.createElement('div');
+    scaleRow2.className = 'flex items-center gap-0.5';
+
+    const applyScale = (ratio: number | null) => {
+      const img = this.getSelectedImage();
+      if (!img) return;
+      if (ratio === null) {
+        this.updateSelectedImage({ width: null, height: null });
+        return;
+      }
+      const domImg = this.root.ownerDocument?.querySelector('.cde-image-box.is-selected img') as HTMLImageElement | null;
+      const baseW = domImg?.naturalWidth || domImg?.offsetWidth || 600;
+      const targetW = Math.round(baseW * ratio);
+      this.updateSelectedImage({ width: targetW, height: null });
+    };
+
+    scaleRow1.append(
+      this.createButton(
+        {
+          title: 'Tamaño original (100%)',
+          label: `<span>100%</span>`,
+          isDisabled: disabled,
+          run: () => applyScale(null),
+        },
+        BTN_TEXT,
+      ),
+      this.createButton(
+        {
+          title: 'Escalar al 75% del tamaño original',
+          label: `<span>75%</span>`,
+          isDisabled: disabled,
+          run: () => applyScale(0.75),
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    scaleRow2.append(
+      this.createButton(
+        {
+          title: 'Escalar al 50% del tamaño original',
+          label: `<span>50%</span>`,
+          isDisabled: disabled,
+          run: () => applyScale(0.5),
+        },
+        BTN_TEXT,
+      ),
+      this.createButton(
+        {
+          title: 'Escalar al 25% del tamaño original',
+          label: `<span>25%</span>`,
+          isDisabled: disabled,
+          run: () => applyScale(0.25),
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    scaleCol.append(scaleRow1, scaleRow2);
+    sizeRow.appendChild(scaleCol);
+    sizeBody.appendChild(sizeRow);
+    panel.appendChild(sizeSec);
+
+    // ──────────────────────────────────────────────
+    // 5. Acciones
+    // ──────────────────────────────────────────────
+    const actionsSec = this.createSection('Acciones');
+    const actionsBody = actionsSec.querySelector('[data-section-body]')!;
+    const actionsCol = document.createElement('div');
+    actionsCol.className = 'flex flex-col gap-0.5 justify-center';
+
+    actionsCol.appendChild(
+      this.createButton(
+        {
+          title: 'Copiar imagen al portapapeles',
+          label: `${lucideSvg(Copy, 13)}<span>Copiar</span>`,
+          isDisabled: disabled,
+          run: () => {
+            document.execCommand('copy');
+          },
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    actionsCol.appendChild(
+      this.createButton(
+        {
+          title: 'Cortar imagen al portapapeles',
+          label: `${lucideSvg(Scissors, 13)}<span>Cortar</span>`,
+          isDisabled: disabled,
+          run: () => {
+            document.execCommand('cut');
+          },
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    actionsCol.appendChild(
+      this.createButton(
+        {
+          title: 'Eliminar la imagen seleccionada del documento',
+          label: `${lucideSvg(Trash2, 13)}<span class="text-red-600">Eliminar</span>`,
+          isDisabled: disabled,
+          className: 'hover:bg-red-50 hover:text-red-700',
+          run: () => {
+            this.deleteSelectedImage();
+          },
+        },
+        BTN_TEXT,
+      ),
+    );
+
+    actionsBody.appendChild(actionsCol);
+    panel.appendChild(actionsSec);
+
+    return panel;
+  }
+
   private buildLayoutPanel(): HTMLElement {
     const panel = this.createPanel('layout');
     const ed = () => this.editor();
@@ -3832,6 +4543,61 @@ export class Toolbar {
       button.classList.toggle('ring-neutral-400/60', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
       button.disabled = disabled;
+    }
+
+    // Image Format contextual tab synchronization
+    const imgInfo = this.getSelectedImage();
+    const hasImage = imgInfo !== null;
+    const imageTabBtn = this.tabButtons.get('image');
+    if (imageTabBtn) {
+      imageTabBtn.hidden = !hasImage;
+      imageTabBtn.style.display = hasImage ? '' : 'none';
+    }
+
+    if (hasImage) {
+      const isNewSelection =
+        !this.isImageSelected ||
+        (this.lastSelectedImagePos !== null && this.lastSelectedImagePos !== imgInfo.pos);
+      this.isImageSelected = true;
+      this.lastSelectedImagePos = imgInfo.pos;
+
+      if (isNewSelection && this.activeTab !== 'image') {
+        this.previousTabBeforeImage = this.activeTab;
+        this.setActiveTab('image');
+      }
+
+      // Update dimension inputs if user isn't currently focusing them
+      const activeEl = document.activeElement;
+      if (this.imgWidthInput && activeEl !== this.imgWidthInput) {
+        let w = imgInfo.attrs.width;
+        if (!w) {
+          const domImg = this.root.ownerDocument?.querySelector('.cde-image-box.is-selected img') as HTMLImageElement | null;
+          if (domImg && domImg.offsetWidth > 0) w = Math.round(domImg.offsetWidth);
+        }
+        this.imgWidthInput.value = w ? String(parseInt(String(w), 10) || '') : '';
+      }
+      if (this.imgHeightInput && activeEl !== this.imgHeightInput) {
+        let h = imgInfo.attrs.height;
+        if (!h) {
+          const domImg = this.root.ownerDocument?.querySelector('.cde-image-box.is-selected img') as HTMLImageElement | null;
+          if (domImg && domImg.offsetHeight > 0) h = Math.round(domImg.offsetHeight);
+        }
+        this.imgHeightInput.value = h ? String(parseInt(String(h), 10) || '') : '';
+      }
+    } else {
+      if (this.isImageSelected) {
+        this.isImageSelected = false;
+        this.lastSelectedImagePos = null;
+        if (this.activeTab === 'image') {
+          this.setActiveTab(this.previousTabBeforeImage || 'home');
+        }
+      }
+      if (this.imgWidthInput && document.activeElement !== this.imgWidthInput) {
+        this.imgWidthInput.value = '';
+      }
+      if (this.imgHeightInput && document.activeElement !== this.imgHeightInput) {
+        this.imgHeightInput.value = '';
+      }
     }
 
     const allowFmt = this.isAllowed('allowFormatting');

@@ -219,6 +219,7 @@ export function syncVirtualSheets(
   gapPx: number,
   headerFooter?: HeaderFooterConfig,
 ): void {
+  // ── Capa 1: hojas virtuales (fondo blanco, sombra) ───────────────────────
   let sheetsRoot = stageEl.querySelector<HTMLElement>('.cde-virtual-sheets');
 
   if (!sheetsRoot) {
@@ -230,13 +231,30 @@ export function syncVirtualSheets(
 
   sheetsRoot.replaceChildren();
 
+  // ── Capa 2: overlay de encabezados y pies (z-index superior al contenido) ─
+  let hfOverlay = stageEl.querySelector<HTMLElement>('.cde-virtual-hf-overlay');
+
+  if (!hfOverlay) {
+    hfOverlay = document.createElement('div');
+    hfOverlay.className = 'cde-virtual-hf-overlay';
+    hfOverlay.setAttribute('aria-hidden', 'true');
+    stageEl.appendChild(hfOverlay);
+  }
+
+  hfOverlay.replaceChildren();
+
   let totalHeight = 0;
   let maxWidth = 0;
+
+  // Acumulador de desplazamiento vertical para posicionar encabezados/pies
+  // de manera absoluta dentro del overlay (que cubre todo el stage).
+  let sheetTop = 0;
 
   for (let i = 0; i < pageCount; i += 1) {
     const m = typeof metricsResolver === 'function' ? metricsResolver(i) : metricsResolver;
     maxWidth = Math.max(maxWidth, m.pageWidthPx);
 
+    // ── Hoja de fondo ────────────────────────────────────────────────────────
     const sheet = document.createElement('div');
     sheet.className = `cde-virtual-sheet cde-virtual-sheet--${m.pageSize} cde-virtual-sheet--${m.orientation}`;
     sheet.style.height = `${m.pageHeightPx}px`;
@@ -244,18 +262,41 @@ export function syncVirtualSheets(
     sheet.style.marginLeft = 'auto';
     sheet.style.marginRight = 'auto';
 
-    if (i < pageCount - 1) {
-      sheet.style.marginBottom = `${gapPx}px`;
+    const gapAfter = i < pageCount - 1 ? gapPx : 0;
+
+    if (gapAfter > 0) {
+      sheet.style.marginBottom = `${gapAfter}px`;
     }
 
+    sheetsRoot.appendChild(sheet);
+
+    // ── Márgenes de esta página ──────────────────────────────────────────────
+    const mg = m.margins;
+    // Offset horizontal: las hojas están centradas; el overlay ocupa todo el
+    // ancho del stage, así que calculamos el margen izquierdo hasta el borde
+    // de la hoja (stage puede ser más ancho si hay otras páginas más anchas).
+    // Usamos variables CSS en el overlay o calculamos en JS con maxWidth.
+    // Por simplicidad usamos calc() con variables que se actualizan al final.
     const isFirstPage = i === 0;
     const skipFirst = Boolean(headerFooter?.differentFirstPage && isFirstPage);
 
-    // 1. Header (Encabezado)
+    // ── Encabezado (Encabezado) ──────────────────────────────────────────────
     if (headerFooter?.showHeader && !skipFirst) {
       const headerEl = document.createElement('div');
       headerEl.className = 'cde-virtual-sheet__header';
       if (headerFooter.headerLine) headerEl.classList.add('has-line');
+
+      // Posicionamiento absoluto dentro del overlay usando métricas reales
+      headerEl.style.top = `${sheetTop}px`;
+      headerEl.style.height = `${mg.top}px`;
+      // La hoja está centrada; offset desde el borde del stage:
+      // left del overlay = (stageWidth - pageWidth) / 2 + mg.left
+      // Usamos la custom property --cde-sheet-offset-left (px desde borde stage)
+      // que calcularemos tras conocer maxWidth. Por ahora almacenamos como
+      // data attributes y re-aplicamos al final.
+      headerEl.dataset.mleft = String(mg.left);
+      headerEl.dataset.mright = String(mg.right);
+      headerEl.dataset.pageWidth = String(m.pageWidthPx);
 
       const left = document.createElement('span');
       left.className = 'cde-virtual-sheet__header-left';
@@ -277,14 +318,21 @@ export function syncVirtualSheets(
       }
 
       headerEl.append(left, center, right);
-      sheet.appendChild(headerEl);
+      hfOverlay.appendChild(headerEl);
     }
 
-    // 2. Footer (Pie de página)
+    // ── Pie de página (Pie de página) ────────────────────────────────────────
     if (headerFooter?.showFooter && !skipFirst) {
       const footerEl = document.createElement('div');
       footerEl.className = 'cde-virtual-sheet__footer';
       if (headerFooter.footerLine) footerEl.classList.add('has-line');
+
+      // El pie ocupa la zona inferior de la página (desde pageHeight - mg.bottom)
+      footerEl.style.top = `${sheetTop + m.pageHeightPx - mg.bottom}px`;
+      footerEl.style.height = `${mg.bottom}px`;
+      footerEl.dataset.mleft = String(mg.left);
+      footerEl.dataset.mright = String(mg.right);
+      footerEl.dataset.pageWidth = String(m.pageWidthPx);
 
       const left = document.createElement('span');
       left.className = 'cde-virtual-sheet__footer-left';
@@ -307,26 +355,57 @@ export function syncVirtualSheets(
       }
 
       footerEl.append(left, center, right);
-      sheet.appendChild(footerEl);
+      hfOverlay.appendChild(footerEl);
     } else if (!headerFooter) {
-      // Default fallback
+      // Número de página por defecto (fallback sin config de encabezado/pie)
       const num = document.createElement('span');
       num.className = 'cde-virtual-sheet__num';
+      // Posición absoluta respecto al overlay: esquina inferior derecha de la hoja
+      num.style.top = `${sheetTop + m.pageHeightPx - mg.bottom + Math.max(mg.bottom - 20, 4)}px`;
+      num.style.right = `${Math.floor((maxWidth - m.pageWidthPx) / 2) + 32}px`;
       num.textContent = `Página ${i + 1}`;
-      sheet.appendChild(num);
+      hfOverlay.appendChild(num);
     } else if (!skipFirst && headerFooter.pageNumberFormat && headerFooter.pageNumberFormat !== 'none') {
       const num = document.createElement('span');
       num.className = 'cde-virtual-sheet__num';
+      num.style.top = `${sheetTop + m.pageHeightPx - mg.bottom + Math.max(mg.bottom - 20, 4)}px`;
+      num.dataset.pageWidth = String(m.pageWidthPx);
       num.textContent = formatPageNum(headerFooter.pageNumberFormat, i + 1, pageCount);
-      sheet.appendChild(num);
+      hfOverlay.appendChild(num);
     }
 
-    sheetsRoot.appendChild(sheet);
-
-    totalHeight += m.pageHeightPx + (i < pageCount - 1 ? gapPx : 0);
+    sheetTop += m.pageHeightPx + gapAfter;
+    totalHeight += m.pageHeightPx + gapAfter;
   }
 
   stageEl.style.minHeight = `${totalHeight}px`;
   stageEl.style.width = `${maxWidth}px`;
   stageEl.style.setProperty('--ruler-half-width', `${maxWidth / 2}px`);
+
+  // ── Aplica posicionamiento horizontal a encabezados/pies ─────────────────
+  // Ahora que conocemos maxWidth podemos calcular el offset de cada hoja.
+  hfOverlay.querySelectorAll<HTMLElement>(
+    '.cde-virtual-sheet__header, .cde-virtual-sheet__footer',
+  ).forEach((el) => {
+    const pageWidth = Number(el.dataset.pageWidth ?? maxWidth);
+    const mleft = Number(el.dataset.mleft ?? 0);
+    const mright = Number(el.dataset.mright ?? 0);
+    const sheetOffsetLeft = Math.floor((maxWidth - pageWidth) / 2);
+    el.style.left = `${sheetOffsetLeft + mleft}px`;
+    el.style.right = `${sheetOffsetLeft + mright}px`;
+    // Limpiamos data attrs usados solo para este cálculo
+    delete el.dataset.mleft;
+    delete el.dataset.mright;
+    delete el.dataset.pageWidth;
+  });
+
+  // Posiciona fallback .cde-virtual-sheet__num (right relativo a maxWidth)
+  hfOverlay.querySelectorAll<HTMLElement>('.cde-virtual-sheet__num').forEach((el) => {
+    if (el.dataset.pageWidth) {
+      const pageWidth = Number(el.dataset.pageWidth);
+      const sheetOffsetLeft = Math.floor((maxWidth - pageWidth) / 2);
+      el.style.right = `${sheetOffsetLeft + 32}px`;
+      delete el.dataset.pageWidth;
+    }
+  });
 }
